@@ -34,6 +34,7 @@ export default function LoginPage() {
     <main className="login-wrap">
       <form className="login-card card" onSubmit={submit}>
         <h1>motor x</h1>
+        <p className="login-sub">posts autônomos · @victoryulo</p>
         <input
           className="input"
           type="password"

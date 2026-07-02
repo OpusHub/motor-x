@@ -116,6 +116,8 @@ export default function DashboardClient() {
   const [editText, setEditText] = useState("");
   const [editBusy, setEditBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [connectBusy, setConnectBusy] = useState<string | null>(null);
 
@@ -284,6 +286,27 @@ export default function DashboardClient() {
       showToast(`inbox: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setInboxBusy(false);
+    }
+  }
+
+  async function changePassword() {
+    if (newPassword.length < 8) {
+      showToast("senha precisa de pelo menos 8 caracteres");
+      return;
+    }
+    setPwBusy(true);
+    try {
+      await api("/api/password", {
+        method: "PUT",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ newPassword }),
+      });
+      setNewPassword("");
+      showToast("senha trocada ✓ (vale no próximo login)");
+    } catch (err) {
+      showToast(`senha: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -695,6 +718,31 @@ export default function DashboardClient() {
                       patchConfig({ channels: { linkedin: { enabled: e.target.checked } } })
                     }
                   />
+                </div>
+              </div>
+
+              <div className="setting-row setting-range">
+                <span className="setting-label">
+                  trocar senha
+                  <span className="small muted">mínimo 8 caracteres, vale no próximo login</span>
+                </span>
+                <div className="btn-row" style={{ marginTop: 8 }}>
+                  <input
+                    className="input"
+                    style={{ flex: 1, minWidth: 160 }}
+                    type="password"
+                    placeholder="senha nova"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => void changePassword()}
+                    disabled={pwBusy || newPassword.length < 8}
+                  >
+                    {pwBusy ? "trocando..." : "trocar"}
+                  </button>
                 </div>
               </div>
             </>

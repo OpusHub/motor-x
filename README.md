@@ -102,3 +102,13 @@ Roda o pipeline inteiro em **modo review**: gera tudo até rascunhos, não agend
 - **Run travado num estágio:** botão "retomar" no dashboard, ou manualmente `POST /api/run/continue` com o id do run. A máquina de estados retoma do estágio salvo.
 - **Conta X desconectada:** o Zernio devolve erro na publicação e o Telegram avisa. Reconecte pelo dashboard (`/api/connect/x`) e reagende os posts pendentes.
 - **Rotação de chaves:** as chaves de Zernio, Telegram e twitterapi.io foram expostas em chat em jul/2026 — **rotacione todas** (painel do Zernio, @BotFather, twitterapi.io) e atualize as env vars na Vercel (`vercel env`), depois redeploy.
+
+## Atualizações v2 (02/jul, noite)
+
+- **URL oficial: https://motorx-opus.vercel.app** (o `x-autopilot.vercel.app` é de terceiros — nunca usar). Após cada `vercel deploy --prod`, rode `vercel alias set <deployment-url> motorx-opus.vercel.app`.
+- **LLM barato por default:** OpenRouter + `moonshotai/kimi-k2.6` (~US$0,30/dia no nosso volume). Basta `OPENROUTER_API_KEY` (openrouter.ai/keys). `ANTHROPIC_API_KEY` vira opção premium (`LLM_PROVIDER=anthropic`). Outros modelos: `MODEL_ID=deepseek/deepseek-chat`, `z-ai/glm-4.6` etc.
+- **Senha:** temporária no bootstrap (`DASHBOARD_PASSWORD`), troca definitiva em ajustes → trocar senha (fica em hash no Blob; a env deixa de valer).
+- **Telegram é 100% opcional** — sem tokens, o sistema roda igual; erro e log aparecem no dashboard.
+- **Deployment Protection (Vercel) está LIGADA no projeto** e intercepta o dashboard e a cadeia de estágios. Escolha UMA:
+  1. *Recomendado:* Vercel → x-autopilot → Settings → Deployment Protection → **Vercel Authentication: OFF** (o app tem senha própria + sessões HMAC);
+  2. Manter ligada: gere **Protection Bypass for Automation** (mesma tela — cria a env `VERCEL_AUTOMATION_BYPASS_SECRET` que a cadeia já usa) e aceite fazer SSO da Vercel no celular antes da nossa senha.

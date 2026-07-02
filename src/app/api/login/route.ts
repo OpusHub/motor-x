@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_NAME, makeSessionValue } from "@/lib/auth";
+import { checkPassword, COOKIE_NAME, makeSessionValue } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -7,7 +7,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function POST(req: NextRequest) {
   const { password } = (await req.json().catch(() => ({}))) as { password?: string };
-  if (!process.env.DASHBOARD_PASSWORD || password !== process.env.DASHBOARD_PASSWORD) {
+  if (!password || !(await checkPassword(password))) {
     await sleep(800); // freio simples contra brute force
     return NextResponse.json({ error: "senha incorreta" }, { status: 401 });
   }

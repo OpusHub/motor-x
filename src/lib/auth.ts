@@ -1,5 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest } from "next/server";
+import { getJSON, putJSON } from "./store";
 
 // Auth do dashboard: cookie de sessão = `${exp}.${hmac(exp)}` com expiração
 // embutida — não é password-equivalent e expira sozinho.
@@ -41,6 +42,28 @@ function safeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
   const bb = Buffer.from(b);
   return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
+// Senha efetiva: a trocada pelo dashboard (hash no Blob) vence; a env
+// DASHBOARD_PASSWORD é só o bootstrap até a primeira troca.
+function passwordDigest(pw: string): string {
+  return createHash("sha256").update(`pw-v1:${pw}`).digest("hex");
+}
+
+export async function checkPassword(pw: string): Promise<boolean> {
+  if (!pw) return false;
+  const stored = await getJSON<{ hash: string }>("auth.json").catch(() => null);
+  if (stored?.hash) {
+    const got = Buffer.from(passwordDigest(pw), "hex");
+    const want = Buffer.from(stored.hash, "hex");
+    return got.length === want.length && timingSafeEqual(got, want);
+  }
+  const env = process.env.DASHBOARD_PASSWORD ?? "";
+  return env.length > 0 && safeEqual(pw, env);
+}
+
+export async function setPassword(pw: string): Promise<void> {
+  await putJSON("auth.json", { hash: passwordDigest(pw), changedAt: new Date().toISOString() });
 }
 
 export function isCronAuthed(req: NextRequest): boolean {

@@ -1,12 +1,103 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Wrapper dos agentes: system estável (prompt do agente + assets canônicos, com
-// prompt caching) + documentos dinâmicos e task no turno de usuário.
-// Structured outputs (output_config.format) garante JSON válido — sem parse frágil.
+// Wrapper dos agentes: system estável (prompt do agente + assets canônicos) +
+// documentos dinâmicos e task no turno de usuário. Multi-provider:
+// - openrouter (default quando OPENROUTER_API_KEY existe): modelos chineses
+//   baratos via API OpenAI-compatible. Default: moonshotai/kimi-k2.6
+//   (melhor open-weight pra escrita, ~10x mais barato que Opus).
+// - anthropic: claude-opus-4-8 com structured outputs + adaptive thinking.
 
-const client = new Anthropic({ maxRetries: 4 });
+const anthropicClient = () => new Anthropic({ maxRetries: 4 });
 
-const MODEL = () => process.env.MODEL_ID || "claude-opus-4-8";
+type Provider = "openrouter" | "anthropic";
+
+function provider(): Provider {
+  const p = process.env.LLM_PROVIDER;
+  if (p === "openrouter" || p === "anthropic") return p;
+  return process.env.OPENROUTER_API_KEY ? "openrouter" : "anthropic";
+}
+
+const MODEL = () =>
+  process.env.MODEL_ID || (provider() === "openrouter" ? "moonshotai/kimi-k2.6" : "claude-opus-4-8");
+
+// Alguns modelos devolvem o JSON entre cercas ou com preâmbulo — extrai robusto.
+function extractJSON<T>(raw: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenced) return JSON.parse(fenced[1]) as T;
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1)) as T;
+    throw new Error(`resposta não é JSON: ${raw.slice(0, 200)}`);
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function runOpenRouter<T>(opts: {
+  systemText: string;
+  userText: string;
+  schema: Record<string, unknown>;
+  maxTokens: number;
+}): Promise<T> {
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) throw new Error("OPENROUTER_API_KEY ausente");
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await sleep(1500 * 2 ** attempt);
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://motorx-opus.vercel.app",
+          "X-Title": "Motor X",
+        },
+        body: JSON.stringify({
+          model: MODEL(),
+          max_tokens: opts.maxTokens,
+          messages: [
+            { role: "system", content: opts.systemText },
+            {
+              role: "user",
+              content: `${opts.userText}\n\nResponda SOMENTE com o JSON no formato pedido, sem texto fora do JSON.`,
+            },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "output", strict: true, schema: opts.schema },
+          },
+        }),
+      });
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`OpenRouter ${res.status}`);
+        continue;
+      }
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`OpenRouter ${res.status}: ${body.slice(0, 300)}`);
+      }
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+        error?: { message?: string };
+      };
+      if (data.error?.message) throw new Error(`OpenRouter: ${data.error.message}`);
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        lastErr = new Error("OpenRouter: resposta vazia");
+        continue;
+      }
+      return extractJSON<T>(content);
+    } catch (err) {
+      if (err instanceof Error && /OpenRouter \d{3}:/.test(err.message)) throw err; // 4xx não-retryable
+      lastErr = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+  throw lastErr ?? new Error("OpenRouter: falha após retries");
+}
 
 export interface AgentDoc {
   tag: string;
@@ -76,8 +167,18 @@ export async function runAgent<T>(opts: {
   const stable = opts.stableDocs.map((d) => `<${d.tag}>\n${d.content}\n</${d.tag}>`).join("\n\n");
   const dynamic = opts.dynamicDocs.map((d) => `<${d.tag}>\n${d.content}\n</${d.tag}>`).join("\n\n");
   const userText = `${dynamic}${dynamic ? "\n\n" : ""}<task>\n${JSON.stringify(opts.task, null, 2)}\n</task>`;
+  const systemText = `${opts.agentPrompt}\n\n${stable}`;
 
-  const response = await client.messages.create({
+  if (provider() === "openrouter") {
+    return runOpenRouter<T>({
+      systemText,
+      userText,
+      schema: opts.schema,
+      maxTokens: opts.maxTokens ?? 16000,
+    });
+  }
+
+  const response = await anthropicClient().messages.create({
     model: MODEL(),
     max_tokens: opts.maxTokens ?? 16000,
     thinking: { type: "adaptive" },
@@ -88,7 +189,7 @@ export async function runAgent<T>(opts: {
     system: [
       {
         type: "text",
-        text: `${opts.agentPrompt}\n\n${stable}`,
+        text: systemText,
         cache_control: { type: "ephemeral" },
       },
     ],
