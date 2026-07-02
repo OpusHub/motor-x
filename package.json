@@ -1,0 +1,29 @@
+{
+  "name": "x-autopilot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "predev": "node scripts/bundle-prompts.mjs",
+    "prebuild": "node scripts/bundle-prompts.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "node scripts/bundle-prompts.mjs && tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
+    "@vercel/blob": "^1.1.1",
+    "@vercel/functions": "^3.1.0",
+    "next": "^15.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.1.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

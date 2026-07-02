@@ -1,0 +1,41 @@
+{
+  "_nota": "Banco de fatos REAIS e duráveis do Victor/OpusBR. O pauteiro usa como complemento — inbox e trends têm prioridade. Nunca inventar número: se o fato não está aqui, no inbox ou num trend com fonte, a pauta não sai. Editável pelo dashboard.",
+  "facts": [
+    {
+      "id": "f-time",
+      "fato": "A OpusBR é tocada por um time de 3 pessoas: Victor (produto/distribuição), 1 sócio e 1 CTO. Vários produtos rodando com esse time enxuto, alavancado em IA.",
+      "fonte": "victor-profile.md",
+      "added": "2026-07-02"
+    },
+    {
+      "id": "f-maquina",
+      "fato": "A operação é UMA máquina de conteúdo + IA faceless que lateraliza a mesma estrutura por nicho (motor de conteúdo + avatares sintéticos + distribuição multi-conta). Não são 10 produtos, é uma máquina com 2 jeitos de cobrar: serviço (rodar pro cliente) e acesso (self-serve).",
+      "fonte": "linha-editorial.md",
+      "added": "2026-07-02"
+    },
+    {
+      "id": "f-faceless-escala",
+      "fato": "A operação faceless roda dezenas de contas conectadas via API (TikTok, Instagram, YouTube) com personas sintéticas publicando de forma automatizada — cerca de 28 contas ativas em jul/2026.",
+      "fonte": "contas conectadas na Zernio (verificado 2026-07-02)",
+      "added": "2026-07-02"
+    },
+    {
+      "id": "f-criaugc",
+      "fato": "CriaUGC: plataforma B2B de UGC sintético em massa (waitlist aberta em criaugc.com). Dor do ICP: CPC subindo todo mês, refém de ads; 4h/dia editando vídeo no CapCut não é escala.",
+      "fonte": "victor-profile.md",
+      "added": "2026-07-02"
+    },
+    {
+      "id": "f-skinup",
+      "fato": "SkinUp: app B2C de rotina de skincare com streaks/gamificação, em validação, PT e EN, freemium. Victor roda ASO/ASA/experimentos de paywall nele como laboratório de distribuição.",
+      "fonte": "victor-profile.md",
+      "added": "2026-07-02"
+    },
+    {
+      "id": "f-x-conta",
+      "fato": "Victor entrou no X em fevereiro de 2026 (@victoryulo, Premium). O conteúdo do X dele é 100% gerado por um sistema automatizado que ele construiu (pauteiro + ghostwriter + crítico de voz rodando em produção).",
+      "fonte": "victor-profile.md + este sistema",
+      "added": "2026-07-02"
+    }
+  ]
+}
