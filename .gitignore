@@ -9,3 +9,4 @@ src/prompts/bundle.ts
 next-env.d.ts
 .DS_Store
 .vercel
+.env*
