@@ -168,6 +168,7 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     effort: "medium",
     agent: "pauteiro",
     timeoutMs: 160_000, // chamada grande (structure-bank inteiro + 8 pautas de output)
+    maxTokens: 30000, // reasoning conta no budget — sem folga o JSON sai truncado
   });
   const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
   run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
@@ -306,6 +307,7 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
 
   run.selecionados = result.selecionados.slice(0, config.postsPerDay);
   run.log.push(`editor: ${run.selecionados.length} selecionados, ${result.descartados.length} descartados`);
+  for (const d of result.descartados) run.log.push(`editor-descartou ${d.id}: ${d.motivo.slice(0, 100)}`);
   if (run.selecionados.length === 0) throw new Error("editor não selecionou nenhum post");
   run.stage = "agendar";
 }
