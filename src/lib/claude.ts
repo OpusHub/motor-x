@@ -41,15 +41,23 @@ async function runOpenRouter<T>(opts: {
   userText: string;
   schema: Record<string, unknown>;
   maxTokens: number;
+  effort: "low" | "medium" | "high";
+  timeoutMs: number;
 }): Promise<T> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ausente");
   let lastErr: Error | null = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt > 0) await sleep(1500 * 2 ** attempt);
+  const attempts = opts.timeoutMs > 100_000 ? 1 : 2;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt > 0) await sleep(1000 * 2 ** attempt);
+    // Timeout por tentativa: sem isso uma geração pendurada segura a função
+    // serverless até o hard-limit de 300s e o run inteiro trava.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs);
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
+        signal: controller.signal,
         headers: {
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
@@ -59,6 +67,9 @@ async function runOpenRouter<T>(opts: {
         body: JSON.stringify({
           model: MODEL(),
           max_tokens: opts.maxTokens,
+          // limita o "pensamento" do modelo de reasoning — tweet não precisa
+          // de 10 minutos de cadeia de raciocínio
+          reasoning: { effort: opts.effort },
           messages: [
             { role: "system", content: opts.systemText },
             {
@@ -93,7 +104,14 @@ async function runOpenRouter<T>(opts: {
       return extractJSON<T>(content);
     } catch (err) {
       if (err instanceof Error && /OpenRouter \d{3}:/.test(err.message)) throw err; // 4xx não-retryable
-      lastErr = err instanceof Error ? err : new Error(String(err));
+      lastErr =
+        err instanceof Error && err.name === "AbortError"
+          ? new Error(`OpenRouter: timeout de ${Math.round(opts.timeoutMs / 1000)}s na geração`)
+          : err instanceof Error
+            ? err
+            : new Error(String(err));
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastErr ?? new Error("OpenRouter: falha após retries");
@@ -160,6 +178,7 @@ export async function runAgent<T>(opts: {
   schema: Record<string, unknown>;
   effort?: "low" | "medium" | "high";
   maxTokens?: number;
+  timeoutMs?: number;
 }): Promise<T> {
   if (process.env.MOCK_LLM === "1") {
     return mockResponse(opts.schema, opts.dynamicDocs) as T;
@@ -175,6 +194,8 @@ export async function runAgent<T>(opts: {
       userText,
       schema: opts.schema,
       maxTokens: opts.maxTokens ?? 16000,
+      effort: opts.effort ?? "medium",
+      timeoutMs: opts.timeoutMs ?? 80_000,
     });
   }
 

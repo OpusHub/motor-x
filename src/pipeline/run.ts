@@ -139,7 +139,8 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     schema: PAUTAS_SCHEMA,
     effort: "medium",
   });
-  run.pautas = result.pautas;
+  const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
+  run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
   run.log.push(`pauteiro: ${result.pautas.length} pautas (${result.pautas.map((p) => p.mov).join(", ")})`);
   run.stage = "drafts";
 }
@@ -218,6 +219,7 @@ async function stageCritico(run: RunState): Promise<void> {
     schema: CRITICO_SCHEMA,
     effort: "high",
     maxTokens: 20000,
+    timeoutMs: 220_000, // 1 chamada grande julgando o lote inteiro — precisa de folga
   });
 
   run.finalistas = result.finalistas;
@@ -278,8 +280,8 @@ async function stageAgendar(run: RunState, config: AppConfig): Promise<void> {
     if (!finalista) continue;
 
     // idempotência: retry do estágio não recria post que já entrou na Zernio
-    const existing = await getJSON<ScheduledPost>(postPath(run.date, sel.id));
-    if (existing?.zernioPostId) {
+    const existing = await getJSON<ScheduledPost & { runId?: string }>(postPath(run.date, sel.id));
+    if (existing?.zernioPostId && existing.runId === run.id) {
       scheduled.push(existing);
       continue;
     }
