@@ -76,6 +76,7 @@ export interface GatherResult {
   facts: { id: string; fato: string; fonte: string }[];
   historico: string[]; // textos publicados/agendados nos últimos 7 dias (anti-repetição)
   voiceAnchors: string[]; // tweets reais recentes do Victor (âncora viva do gate cego)
+  lessons: string[]; // lições acumuladas: padrões que o crítico matou em runs anteriores
 }
 
 export type RunStage =
@@ -83,6 +84,7 @@ export type RunStage =
   | "pautas"
   | "drafts"
   | "critico"
+  | "regen"
   | "editor"
   | "agendar"
   | "notificar"

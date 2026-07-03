@@ -4,6 +4,7 @@ import { loadConfig } from "@/lib/config";
 import { getJSON, listJSON, putJSON } from "@/lib/store";
 import { notify, readInbox } from "@/lib/telegram";
 import { nicheTrends, victorRecentTweets } from "@/lib/twitterapi";
+import { rssTrends } from "@/lib/rss";
 import { createPost, personalAccounts, ZernioError } from "@/lib/zernio";
 import {
   AppConfig,
@@ -94,9 +95,10 @@ async function stageGather(run: RunState): Promise<void> {
   }
   if (inboxDirty) await putJSON(inboxPath, inbox);
 
-  const [trends, anchors, ...postsByDay] = await Promise.all([
+  const [twitterTrends, anchors, lessonsBlob, ...postsByDay] = await Promise.all([
     nicheTrends(6),
     victorRecentTweets(6),
+    getJSON<{ lessons: { d: string; t: string }[] }>("lessons.json"),
     ...recentDates(7, run.date).map((d) => listJSON<ScheduledPost & { texto: string }>(`posts/${d}/`, 20)),
   ]);
 
@@ -110,8 +112,14 @@ async function stageGather(run: RunState): Promise<void> {
   const factsBank = JSON.parse(ASSETS.factsBank) as { facts: { id: string; fato: string; fonte: string }[] };
   const dynamicFacts = (await getJSON<{ facts: { id: string; fato: string; fonte: string }[] }>("facts.json"))?.facts ?? [];
 
+  // twitterapi sem créditos/fora → manchetes RSS entram como fonte de fato real
+  const trends = twitterTrends.length > 0 ? twitterTrends : await rssTrends(6);
+  const trendsFonte = twitterTrends.length > 0 ? "x" : trends.length > 0 ? "rss" : "nenhuma";
+
   const voiceAnchors =
     anchors.length >= 3 ? anchors : sampleVoiceSeeds(ASSETS.voiceSamples, 5, `anchors-${run.date}`);
+
+  const lessons = (lessonsBlob?.lessons ?? []).slice(-12).map((l) => l.t);
 
   const insumos: GatherResult = {
     inbox,
@@ -119,10 +127,11 @@ async function stageGather(run: RunState): Promise<void> {
     facts: [...factsBank.facts, ...dynamicFacts],
     historico,
     voiceAnchors,
+    lessons,
   };
   run.insumos = insumos;
   run.log.push(
-    `gather: ${insumos.inbox.length} inbox (${insumos.inbox.filter((i) => i.mediaUrl).length} com print), ${trends.length} trends, ${insumos.facts.length} fatos, ${historico.length} históricos, âncoras ${anchors.length >= 3 ? "vivas" : "estáticas"}`
+    `gather: ${insumos.inbox.length} inbox (${insumos.inbox.filter((i) => i.mediaUrl).length} com print), ${trends.length} trends (${trendsFonte}), ${insumos.facts.length} fatos, ${historico.length} históricos, ${lessons.length} lições, âncoras ${anchors.length >= 3 ? "vivas" : "estáticas"}`
   );
   run.stage = "pautas";
 }
@@ -207,6 +216,14 @@ async function stageDrafts(run: RunState): Promise<void> {
           { tag: "voice_seeds", content: seeds.join("\n---\n") },
           { tag: "mov_esqueleto", content: movBlock(pauta.mov) },
           { tag: "pauta", content: JSON.stringify(pauta, null, 2) },
+          ...((run.insumos?.lessons ?? []).length > 0
+            ? [
+                {
+                  tag: "licoes_recentes",
+                  content: `Padrões que o crítico MATOU em runs anteriores — não repita nenhum:\n- ${(run.insumos?.lessons ?? []).join("\n- ")}`,
+                },
+              ]
+            : []),
           ...(media
             ? [
                 {
@@ -274,7 +291,124 @@ async function stageCritico(run: RunState): Promise<void> {
   run.log.push(
     `crítico: ${result.finalistas.length} finalistas (scores ${result.finalistas.map((f) => f.score).join(", ")}), ${result.mortos.length} mortos`
   );
-  if (result.finalistas.length === 0) throw new Error("crítico matou todos os drafts");
+
+  // auto-melhora: os motivos das mortes viram lições persistentes (o ghostwriter
+  // dos próximos runs recebe e evita os mesmos padrões)
+  try {
+    const blob = (await getJSON<{ lessons: { d: string; t: string }[] }>("lessons.json")) ?? { lessons: [] };
+    for (const m of result.mortos) {
+      blob.lessons.push({ d: run.date, t: m.motivo.slice(0, 160) });
+    }
+    blob.lessons = blob.lessons.slice(-40);
+    await putJSON("lessons.json", blob);
+  } catch {
+    run.log.push("aviso: falha ao salvar lições");
+  }
+
+  // regeneração: veto seco não — mortes recuperáveis ganham UMA rodada de
+  // reescrita com o motivo como instrução
+  const fixaveis = fixableMortos(result.mortos);
+  if (result.finalistas.length < 3 && fixaveis.length > 0) {
+    run.stage = "regen";
+    return;
+  }
+  if (result.finalistas.length === 0) throw new Error("crítico matou todos os drafts (nenhum recuperável)");
+  run.stage = "editor";
+}
+
+// morte por P0/invenção não se conserta reescrevendo; o resto é recuperável
+function fixableMortos(mortos: Morto[]): Morto[] {
+  return mortos.filter((m) => !/p0|veto duro|inventad|não tem lastro|nao tem lastro|sem lastro/i.test(m.motivo));
+}
+
+async function stageRegen(run: RunState): Promise<void> {
+  const pautasById = new Map((run.pautas ?? []).map((p) => [p.id, p]));
+  const draftsById = new Map((run.drafts ?? []).map((d) => [d.pautaId, d]));
+  const alvos = fixableMortos(run.mortos ?? [])
+    .filter((m) => pautasById.has(m.id) && draftsById.has(m.id))
+    .slice(0, 3);
+
+  if (alvos.length === 0) {
+    if ((run.finalistas ?? []).length === 0) throw new Error("crítico matou todos os drafts (nenhum recuperável)");
+    run.stage = "editor";
+    return;
+  }
+
+  const rewrites = await Promise.allSettled(
+    alvos.map(async (morto) => {
+      const pauta = pautasById.get(morto.id)!;
+      const original = draftsById.get(morto.id)!;
+      const media = mediaItemOf(run, pauta);
+      const seeds = sampleVoiceSeeds(ASSETS.voiceSamples, 4, `${run.id}-regen-${pauta.id}`);
+      const out = await runAgent<{ texto: string; seed_descartada: string }>({
+        agentPrompt: AGENTS.ghostwriter,
+        stableDocs: [
+          { tag: "voice_model", content: ASSETS.voiceModel },
+          { tag: "victor_profile", content: ASSETS.victorProfile },
+        ],
+        dynamicDocs: [
+          { tag: "voice_seeds", content: seeds.join("\n---\n") },
+          { tag: "mov_esqueleto", content: movBlock(pauta.mov) },
+          { tag: "pauta", content: JSON.stringify(pauta, null, 2) },
+          {
+            tag: "correcao_do_critico",
+            content: `Seu draft anterior desta pauta foi MORTO pelo crítico.\nDraft morto:\n${original.texto}\n\nMotivo da morte: ${morto.motivo}\n\nReescreva a MESMA pauta do zero corrigindo exatamente esse problema (não recicle as frases do draft morto).`,
+          },
+          ...(media
+            ? [{ tag: "print_anexado", content: `Este post SAI com um print anexado. O que mostra: ${media.mediaDescricao ?? media.texto}. Referencie, não reescreva os números.` }]
+            : []),
+        ],
+        task: { instrucao: "reescreva o tweet corrigindo o motivo da morte" },
+        schema: DRAFT_SCHEMA,
+        effort: "high",
+        maxTokens: 12000,
+        agent: "ghostwriter",
+      });
+      return { pautaId: pauta.id, texto: out.texto } as Draft;
+    })
+  );
+
+  const novos = rewrites.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (novos.length === 0) {
+    run.log.push("regen: todas as reescritas falharam");
+    if ((run.finalistas ?? []).length === 0) throw new Error("crítico matou todos e regen falhou");
+    run.stage = "editor";
+    return;
+  }
+
+  // segunda passada do crítico só nas reescritas
+  const draftsComPauta = novos.map((d) => ({ id: d.pautaId, texto: d.texto, pauta: pautasById.get(d.pautaId) }));
+  const result = await runAgent<{ finalistas: Finalista[]; mortos: Morto[] }>({
+    agentPrompt: AGENTS.critico,
+    stableDocs: [
+      { tag: "voice_model", content: ASSETS.voiceModel },
+      { tag: "victor_profile", content: ASSETS.victorProfile },
+      { tag: "algorithm_rules", content: ASSETS.algorithmRules },
+    ],
+    dynamicDocs: [
+      { tag: "anchors", content: (run.insumos?.voiceAnchors ?? []).join("\n---\n") },
+      { tag: "drafts", content: JSON.stringify(draftsComPauta, null, 2) },
+      {
+        tag: "contexto",
+        content: `Estas são REESCRITAS de drafts mortos na primeira rodada. Finalistas já aprovados (evite duplicar âncora/tema com eles na Fase C): ${JSON.stringify((run.finalistas ?? []).map((f) => f.texto))}`,
+      },
+    ],
+    task: { instrucao: "julgue só estas reescritas (fases A, B e C)" },
+    schema: CRITICO_SCHEMA,
+    effort: "high",
+    maxTokens: 12000,
+    agent: "critico",
+    timeoutMs: 160_000,
+  });
+
+  // substitui os drafts mortos pelas reescritas aprovadas
+  run.drafts = (run.drafts ?? []).map((d) => novos.find((n) => n.pautaId === d.pautaId) ?? d);
+  run.finalistas = [...(run.finalistas ?? []), ...result.finalistas];
+  run.mortos = [...(run.mortos ?? []).filter((m) => !novos.find((n) => n.pautaId === m.id)), ...result.mortos];
+  run.log.push(
+    `regen: ${novos.length} reescritas, +${result.finalistas.length} finalistas aprovados (total ${run.finalistas.length})`
+  );
+  if (run.finalistas.length === 0) throw new Error("crítico matou todos, inclusive as reescritas");
   run.stage = "editor";
 }
 
@@ -431,6 +565,9 @@ export async function advance(run: RunState): Promise<RunState> {
         break;
       case "critico":
         await stageCritico(run);
+        break;
+      case "regen":
+        await stageRegen(run);
         break;
       case "editor":
         await stageEditor(run, config);

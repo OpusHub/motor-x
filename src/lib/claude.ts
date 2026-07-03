@@ -74,8 +74,9 @@ async function runOpenRouter<T>(opts: {
         },
         body: JSON.stringify({
           model: MODEL(opts.agent),
-          // no retry, deixa o OpenRouter cair pro fallback se o primário falhar
-          ...(attempt > 0 ? { models: [MODEL(opts.agent), "deepseek/deepseek-v4-pro"] } : {}),
+          // fallback oficial: se o primário (kimi) falhar no provedor, o
+          // OpenRouter cai pro deepseek v4 na MESMA request
+          models: Array.from(new Set([MODEL(opts.agent), "deepseek/deepseek-v4-pro"])),
           // só roteia pra provedores que suportam json_schema/reasoning
           provider: { require_parameters: true },
           max_tokens: opts.maxTokens,
