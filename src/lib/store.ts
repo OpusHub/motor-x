@@ -11,6 +11,20 @@ function prefix(path: string): string {
   return secret ? `${secret}/${path}` : path;
 }
 
+// Upload binário (imagens do inbox). Retorna a URL pública — a Zernio baixa
+// daqui na hora de publicar, e o dashboard usa pra thumbnail.
+// SEM prefix(): a URL da mídia circula fora (Zernio/X) e não pode carregar o
+// BLOB_PATH_SECRET no caminho. A entropia do nome (uuid) já protege o arquivo.
+export async function putBinary(path: string, data: ArrayBuffer, contentType: string): Promise<string> {
+  const blob = await put(`public-media/${path}`, data, {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType,
+  });
+  return blob.url;
+}
+
 export async function putJSON(path: string, data: unknown): Promise<void> {
   await put(prefix(path), JSON.stringify(data, null, 2), {
     access: "public",

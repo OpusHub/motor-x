@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppConfig, RunStage, ScheduledPost } from "@/lib/types";
+import type { AppConfig, InboxItem, RunStage, ScheduledPost } from "@/lib/types";
 
 // ---------- tipos da API ----------
 
@@ -108,7 +108,8 @@ export default function DashboardClient() {
   const [date, setDate] = useState<string>(() => brtToday());
   const [status, setStatus] = useState<StatusData | null>(null);
   const [data, setData] = useState<PostsData | null>(null);
-  const [inboxItems, setInboxItems] = useState<string[]>([]);
+  const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
+  const [inboxFile, setInboxFile] = useState<File | null>(null);
   const [inboxText, setInboxText] = useState("");
   const [inboxBusy, setInboxBusy] = useState(false);
   const [runBusy, setRunBusy] = useState(false);
@@ -152,8 +153,8 @@ export default function DashboardClient() {
 
   const loadInbox = useCallback(async (d: string) => {
     try {
-      const res = await api<{ date: string; items: string[] }>(`/api/inbox?date=${d}`);
-      setInboxItems(res.items);
+      const res = await api<{ date: string; items: (string | InboxItem)[] }>(`/api/inbox?date=${d}`);
+      setInboxItems(res.items.map((it, i) => (typeof it === "string" ? { id: `m${i}`, texto: it } : it)));
     } catch {
       // inbox não é crítico
     }
@@ -272,15 +273,23 @@ export default function DashboardClient() {
 
   async function sendInbox() {
     const texto = inboxText.trim();
-    if (!texto) return;
+    if (!texto && !inboxFile) return;
     setInboxBusy(true);
     try {
-      await api("/api/inbox", {
-        method: "POST",
-        headers: JSON_HEADERS,
-        body: JSON.stringify({ texto }),
-      });
+      if (inboxFile) {
+        const form = new FormData();
+        form.append("texto", texto);
+        form.append("imagem", inboxFile);
+        await api("/api/inbox", { method: "POST", body: form });
+      } else {
+        await api("/api/inbox", {
+          method: "POST",
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ texto }),
+        });
+      }
       setInboxText("");
+      setInboxFile(null);
       await loadInbox(date);
     } catch (err) {
       showToast(`inbox: ${err instanceof Error ? err.message : String(err)}`);
@@ -572,6 +581,7 @@ export default function DashboardClient() {
                   </>
                 ) : (
                   <>
+                    {post.mediaUrl && <img className="post-img" src={post.mediaUrl} alt="" />}
                     <p className="post-text">{post.texto}</p>
                     {post.erro && <p className="post-error">{post.erro}</p>}
                     {post.status !== "killed" && (
@@ -606,18 +616,38 @@ export default function DashboardClient() {
           rows={3}
         />
         <div className="btn-row" style={{ marginTop: 8 }}>
+          <label className="btn btn-sm file-btn">
+            {inboxFile ? `📎 ${inboxFile.name.slice(0, 18)}` : "📎 print"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              hidden
+              onChange={(e) => setInboxFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {inboxFile && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setInboxFile(null)}>
+              ✕
+            </button>
+          )}
           <button
             className="btn btn-primary"
             onClick={() => void sendInbox()}
-            disabled={inboxBusy || !inboxText.trim()}
+            disabled={inboxBusy || (!inboxText.trim() && !inboxFile)}
           >
             {inboxBusy ? "enviando..." : "enviar"}
           </button>
         </div>
+        <p className="small muted" style={{ marginTop: 6 }}>
+          print + contexto = o motor lê a imagem e o post sai com ela anexada
+        </p>
         {inboxItems.length > 0 && (
           <ul className="inbox-list">
             {inboxItems.map((item, i) => (
-              <li key={`${i}-${item.slice(0, 16)}`}>{item}</li>
+              <li key={item.id ?? i}>
+                {item.mediaUrl && <img className="thumb" src={item.mediaUrl} alt="" />}
+                <span>{item.texto}</span>
+              </li>
             ))}
           </ul>
         )}

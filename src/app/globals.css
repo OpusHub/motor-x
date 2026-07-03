@@ -435,6 +435,28 @@ textarea {
 
 .inbox-list li::before { content: "» "; color: var(--phos-dim); }
 
+.inbox-list li { display: flex; align-items: center; gap: 8px; }
+
+.thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--card-edge-hot);
+  flex-shrink: 0;
+}
+
+.post-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--card-edge);
+  margin-bottom: 8px;
+}
+
+.file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+
 /* ---------- ajustes ---------- */
 
 .settings-details summary {

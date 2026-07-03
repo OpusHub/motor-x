@@ -1,5 +1,5 @@
 import { AGENTS, ASSETS } from "@/prompts/bundle";
-import { runAgent, sampleVoiceSeeds } from "@/lib/claude";
+import { describeImage, runAgent, sampleVoiceSeeds } from "@/lib/claude";
 import { loadConfig } from "@/lib/config";
 import { getJSON, listJSON, putJSON } from "@/lib/store";
 import { notify, readInbox } from "@/lib/telegram";
@@ -10,6 +10,7 @@ import {
   Draft,
   Finalista,
   GatherResult,
+  InboxItem,
   Morto,
   Pauta,
   RunState,
@@ -71,11 +72,27 @@ async function stageGather(run: RunState): Promise<void> {
   //    insumos — retry do run não perde braindump (o getUpdates é destrutivo)
   const telegramTexts = await readInbox();
   const inboxPath = `inbox/${run.date}.json`;
-  let inbox = (await getJSON<string[]>(inboxPath)) ?? [];
+  const raw = (await getJSON<(string | InboxItem)[]>(inboxPath)) ?? [];
+  // compat: itens antigos eram strings puras
+  let inbox: InboxItem[] = raw.map((it, i) =>
+    typeof it === "string" ? { id: `m${i + 1}`, texto: it } : { ...it, id: it.id ?? `m${i + 1}` }
+  );
+  let inboxDirty = false;
   if (telegramTexts.length > 0) {
-    inbox = [...inbox, ...telegramTexts];
-    await putJSON(inboxPath, inbox);
+    inbox = [...inbox, ...telegramTexts.map((t, i) => ({ id: `tg${inbox.length + i + 1}`, texto: t }))];
+    inboxDirty = true;
   }
+  // lê os prints anexados que ainda não têm descrição (visão via LLM)
+  for (const item of inbox) {
+    if (item.mediaUrl && !item.mediaDescricao) {
+      const desc = await describeImage(item.mediaUrl);
+      if (desc) {
+        item.mediaDescricao = desc;
+        inboxDirty = true;
+      }
+    }
+  }
+  if (inboxDirty) await putJSON(inboxPath, inbox);
 
   const [trends, anchors, ...postsByDay] = await Promise.all([
     nicheTrends(6),
@@ -96,15 +113,16 @@ async function stageGather(run: RunState): Promise<void> {
   const voiceAnchors =
     anchors.length >= 3 ? anchors : sampleVoiceSeeds(ASSETS.voiceSamples, 5, `anchors-${run.date}`);
 
-  run.insumos = {
+  const insumos: GatherResult = {
     inbox,
     trends,
     facts: [...factsBank.facts, ...dynamicFacts],
     historico,
     voiceAnchors,
-  } satisfies GatherResult;
+  };
+  run.insumos = insumos;
   run.log.push(
-    `gather: ${run.insumos.inbox.length} inbox, ${trends.length} trends, ${run.insumos.facts.length} fatos, ${historico.length} históricos, âncoras ${anchors.length >= 3 ? "vivas" : "estáticas"}`
+    `gather: ${insumos.inbox.length} inbox (${insumos.inbox.filter((i) => i.mediaUrl).length} com print), ${trends.length} trends, ${insumos.facts.length} fatos, ${historico.length} históricos, âncoras ${anchors.length >= 3 ? "vivas" : "estáticas"}`
   );
   run.stage = "pautas";
 }
@@ -120,7 +138,17 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
       { tag: "structure_bank", content: ASSETS.structureBank },
     ],
     dynamicDocs: [
-      { tag: "inbox", content: insumos.inbox.length ? insumos.inbox.join("\n---\n") : "(vazio hoje)" },
+      {
+        tag: "inbox",
+        content: insumos.inbox.length
+          ? insumos.inbox
+              .map(
+                (it) =>
+                  `[${it.id}] ${it.texto}${it.mediaUrl ? `\n(PRINT ANEXADO ${it.id} — o post desta pauta pode sair com esta imagem. O que o print mostra: ${it.mediaDescricao ?? "sem leitura"})` : ""}`
+              )
+              .join("\n---\n")
+          : "(vazio hoje)",
+      },
       {
         tag: "trends",
         content: insumos.trends.length
@@ -138,6 +166,7 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     },
     schema: PAUTAS_SCHEMA,
     effort: "medium",
+    agent: "pauteiro",
   });
   const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
   run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
@@ -146,6 +175,11 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
 }
 
 const DRAFTS_BATCH = 4;
+
+function mediaItemOf(run: RunState, pauta: Pauta): InboxItem | undefined {
+  if (!pauta.inbox_media_id) return undefined;
+  return (run.insumos?.inbox ?? []).find((i) => i.id === pauta.inbox_media_id && i.mediaUrl);
+}
 
 async function stageDrafts(run: RunState): Promise<void> {
   // Incremental: processa até DRAFTS_BATCH pautas por invocação e persiste o
@@ -160,6 +194,7 @@ async function stageDrafts(run: RunState): Promise<void> {
   const results = await Promise.allSettled(
     batch.map(async (pauta) => {
       const seeds = sampleVoiceSeeds(ASSETS.voiceSamples, 4, `${run.id}-${pauta.id}`);
+      const media = mediaItemOf(run, pauta);
       const out = await runAgent<{ texto: string; seed_descartada: string }>({
         agentPrompt: AGENTS.ghostwriter,
         stableDocs: [
@@ -170,11 +205,20 @@ async function stageDrafts(run: RunState): Promise<void> {
           { tag: "voice_seeds", content: seeds.join("\n---\n") },
           { tag: "mov_esqueleto", content: movBlock(pauta.mov) },
           { tag: "pauta", content: JSON.stringify(pauta, null, 2) },
+          ...(media
+            ? [
+                {
+                  tag: "print_anexado",
+                  content: `Este post SAI com um print anexado. O que o print mostra: ${media.mediaDescricao ?? media.texto}. Regra 5.3 do voice_model: REFERENCIE o que o print mostra ("já somou isso"), NUNCA reescreva no texto os números que a imagem já exibe.`,
+                },
+              ]
+            : []),
         ],
         task: { instrucao: "escreva o tweet desta pauta seguindo o protocolo" },
         schema: DRAFT_SCHEMA,
         effort: "high",
         maxTokens: 12000,
+        agent: "ghostwriter",
       });
       return { pautaId: pauta.id, texto: out.texto, seedDescartada: out.seed_descartada } satisfies Draft;
     })
@@ -219,6 +263,7 @@ async function stageCritico(run: RunState): Promise<void> {
     schema: CRITICO_SCHEMA,
     effort: "high",
     maxTokens: 20000,
+    agent: "critico",
     timeoutMs: 220_000, // 1 chamada grande julgando o lote inteiro — precisa de folga
   });
 
@@ -233,12 +278,16 @@ async function stageCritico(run: RunState): Promise<void> {
 
 async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
   const pautasById = new Map((run.pautas ?? []).map((p) => [p.id, p]));
-  const finalistasComPauta = (run.finalistas ?? []).map((f) => ({
-    ...f,
-    pilar: pautasById.get(f.id)?.pilar,
-    objetivo: pautasById.get(f.id)?.objetivo,
-    idioma: pautasById.get(f.id)?.idioma,
-  }));
+  const finalistasComPauta = (run.finalistas ?? []).map((f) => {
+    const pauta = pautasById.get(f.id);
+    return {
+      ...f,
+      pilar: pauta?.pilar,
+      objetivo: pauta?.objetivo,
+      idioma: pauta?.idioma,
+      tem_print_anexado: !!(pauta && mediaItemOf(run, pauta)),
+    };
+  });
 
   const result = await runAgent<{ selecionados: Selecionado[]; descartados: Morto[] }>({
     agentPrompt: AGENTS.editor,
@@ -251,6 +300,7 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
     schema: EDITOR_SCHEMA,
     effort: "low",
     maxTokens: 8000,
+    agent: "editor",
   });
 
   run.selecionados = result.selecionados.slice(0, config.postsPerDay);
@@ -287,12 +337,15 @@ async function stageAgendar(run: RunState, config: AppConfig): Promise<void> {
     }
 
     const scheduledForISO = slots.get(sel.id) ?? new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const pautaSel = (run.pautas ?? []).find((p) => p.id === sel.id);
+    const mediaUrl = pautaSel ? mediaItemOf(run, pautaSel)?.mediaUrl : undefined;
     const post: ScheduledPost = {
       pautaId: sel.id,
       texto: finalista.texto,
       platform: "twitter",
       scheduledForISO,
       status: asDraft ? "draft" : "scheduled",
+      mediaUrl,
     };
     try {
       const result = await createPost({
@@ -302,6 +355,7 @@ async function stageAgendar(run: RunState, config: AppConfig): Promise<void> {
         scheduledForISO: asDraft ? undefined : scheduledForISO,
         isDraft: asDraft,
         idempotencyKey: `${run.id}-${sel.id}`,
+        mediaUrl,
       });
       post.zernioPostId = result.post._id;
     } catch (err) {

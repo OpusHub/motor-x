@@ -9,6 +9,13 @@ export interface Fato {
   origem: "inbox" | "trend" | "banco";
 }
 
+export interface InboxItem {
+  id: string;
+  texto: string;
+  mediaUrl?: string; // print/imagem anexada (URL pública no Blob)
+  mediaDescricao?: string; // leitura da imagem pelo modelo (preenchida no gather)
+}
+
 export interface Pauta {
   id: string;
   pilar: 1 | 2 | 3 | 4 | 5;
@@ -17,6 +24,7 @@ export interface Pauta {
   idioma: Idioma;
   fato: Fato;
   angulo: string;
+  inbox_media_id?: string | null; // id do item do inbox cujo print sai anexado no post
 }
 
 export interface Draft {
@@ -52,6 +60,7 @@ export interface ScheduledPost {
   zernioPostId?: string;
   status: "scheduled" | "draft" | "failed" | "killed";
   erro?: string;
+  mediaUrl?: string; // imagem anexada ao post (quando a pauta veio de print do inbox)
 }
 
 export interface TrendItem {
@@ -62,7 +71,7 @@ export interface TrendItem {
 }
 
 export interface GatherResult {
-  inbox: string[];
+  inbox: InboxItem[];
   trends: TrendItem[];
   facts: { id: string; fato: string; fonte: string }[];
   historico: string[]; // textos publicados/agendados nos últimos 7 dias (anti-repetição)

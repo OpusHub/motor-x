@@ -17,8 +17,15 @@ function provider(): Provider {
   return process.env.OPENROUTER_API_KEY ? "openrouter" : "anthropic";
 }
 
-const MODEL = () =>
-  process.env.MODEL_ID || (provider() === "openrouter" ? "moonshotai/kimi-k2.6" : "claude-opus-4-8");
+export type AgentName = "pauteiro" | "ghostwriter" | "critico" | "editor";
+
+// Modelo por agente: MODEL_PAUTEIRO / MODEL_GHOSTWRITER / MODEL_CRITICO /
+// MODEL_EDITOR vencem; senao MODEL_ID; senao o default do provider.
+// Experimento barato: MODEL_PAUTEIRO=deepseek/deepseek-v4-flash
+const MODEL = (agent?: AgentName) =>
+  (agent && process.env[`MODEL_${agent.toUpperCase()}`]) ||
+  process.env.MODEL_ID ||
+  (provider() === "openrouter" ? "moonshotai/kimi-k2.6" : "claude-opus-4-8");
 
 // Alguns modelos devolvem o JSON entre cercas ou com preâmbulo — extrai robusto.
 function extractJSON<T>(raw: string): T {
@@ -43,6 +50,7 @@ async function runOpenRouter<T>(opts: {
   maxTokens: number;
   effort: "low" | "medium" | "high";
   timeoutMs: number;
+  agent?: AgentName;
 }): Promise<T> {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ausente");
@@ -65,7 +73,7 @@ async function runOpenRouter<T>(opts: {
           "X-Title": "Motor X",
         },
         body: JSON.stringify({
-          model: MODEL(),
+          model: MODEL(opts.agent),
           max_tokens: opts.maxTokens,
           // limita o "pensamento" do modelo de reasoning — tweet não precisa
           // de 10 minutos de cadeia de raciocínio
@@ -179,6 +187,7 @@ export async function runAgent<T>(opts: {
   effort?: "low" | "medium" | "high";
   maxTokens?: number;
   timeoutMs?: number;
+  agent?: AgentName;
 }): Promise<T> {
   if (process.env.MOCK_LLM === "1") {
     return mockResponse(opts.schema, opts.dynamicDocs) as T;
@@ -196,6 +205,7 @@ export async function runAgent<T>(opts: {
       maxTokens: opts.maxTokens ?? 16000,
       effort: opts.effort ?? "medium",
       timeoutMs: opts.timeoutMs ?? 80_000,
+      agent: opts.agent,
     });
   }
 
@@ -253,4 +263,50 @@ export function sampleVoiceSeeds(voiceSamples: string, count: number, seedKey: s
     }
   }
   return out;
+}
+
+// Lê um print/imagem do inbox e devolve uma descrição rica pro pipeline
+// (o que mostra, números visíveis, contexto). Best-effort: falha vira "".
+export async function describeImage(url: string): Promise<string> {
+  if (process.env.MOCK_LLM === "1") return "(mock: print de dashboard com métricas)";
+  const key = process.env.OPENROUTER_API_KEY;
+  if (!key) return "";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://motorx-opus.vercel.app",
+        "X-Title": "Motor X",
+      },
+      body: JSON.stringify({
+        model: MODEL(),
+        max_tokens: 2000,
+        reasoning: { effort: "low" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url } },
+              {
+                type: "text",
+                text: "Descreva este print pra um redator usar num tweet: o que a tela mostra, TODOS os números/métricas visíveis (exatos), nomes de plataformas/apps, e o que prova. Seja factual, 4-6 linhas, pt-BR.",
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) return "";
+    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    return data.choices?.[0]?.message?.content?.trim() ?? "";
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
 }

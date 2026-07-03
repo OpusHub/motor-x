@@ -83,11 +83,15 @@ export async function createPost(opts: {
   scheduledForISO?: string; // UTC ISO — se ausente e isDraft=false, publica na hora
   isDraft?: boolean;
   idempotencyKey?: string;
+  mediaUrl?: string; // imagem anexada (URL pública)
 }): Promise<ZernioPostResult> {
   const body: Record<string, unknown> = {
     content: opts.content,
     timezone: "UTC",
   };
+  if (opts.mediaUrl) {
+    body.mediaItems = [{ type: "image", url: opts.mediaUrl }];
+  }
   if (opts.isDraft) {
     body.isDraft = true;
   } else {
