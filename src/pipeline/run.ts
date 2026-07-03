@@ -167,6 +167,7 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     schema: PAUTAS_SCHEMA,
     effort: "medium",
     agent: "pauteiro",
+    timeoutMs: 160_000, // chamada grande (structure-bank inteiro + 8 pautas de output)
   });
   const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
   run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
