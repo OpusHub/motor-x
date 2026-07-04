@@ -16,6 +16,9 @@ inbox do Victor (material vivido) > facts_bank (fato dele com lastro) > trend (s
 - O inverso também vale: pauta de PROVA com número operacional (MOV-02/04/06/23/26) SEM print disponível fica mais fraca — nesses casos prefira ângulo de take/observação/erro-do-mercado (MOV-25/30/13) sobre o mesmo fato, ou use o fato sem estrutura de "olha o número". Nunca invente que existe print.
 - Pauta sem print: `inbox_media_id` = null.
 
+## Veto de segurança da conta
+NUNCA gere pauta cujo assunto seja a automação DESTA conta do X (sistema autônomo postando os tweets dele, IA escrevendo os posts dele, etc.). O X flagou a conta por isso em jul/2026. Falar de IA/automação como TEMA de negócio (avatares, faceless, operação de clientes) segue liberado — o veto é sobre expor que ESTA conta é automatizada.
+
 ## Variação (anti-fadiga)
 - Dentro do lote: pilares e objetivos variados; nunca 2 pautas de mesmo pilar+tema.
 - Contra `<historico_recente>` (últimos 7 dias): não repetir tema nem MOV dominante.
