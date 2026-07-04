@@ -598,9 +598,15 @@ export async function advance(run: RunState): Promise<RunState> {
 // Reativa um run que morreu em erro: volta pro estágio que falhou.
 export async function resumeErroredRun(run: RunState): Promise<RunState> {
   if (run.stage === "error" && run.failedStage && run.failedStage !== "error") {
-    run.stage = run.failedStage;
+    let alvo = run.failedStage;
+    // roteamento são: nunca retomar num estágio cujas precondições não existem
+    if ((alvo === "drafts" || alvo === "critico" || alvo === "regen" || alvo === "editor") && (run.pautas ?? []).length === 0) alvo = "pautas";
+    else if ((alvo === "critico" || alvo === "regen") && (run.drafts ?? []).length === 0) alvo = "drafts";
+    else if ((alvo === "editor" || alvo === "agendar") && (run.finalistas ?? []).length === 0 && alvo !== "editor") alvo = "critico";
+    if (alvo !== "gather" && !run.insumos) alvo = "gather";
+    run.stage = alvo;
     run.error = undefined;
-    run.log.push(`retomando do estágio ${run.failedStage}`);
+    run.log.push(`retomando do estágio ${alvo}`);
     await saveRun(run);
   }
   return run;
