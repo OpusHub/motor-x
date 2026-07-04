@@ -21,7 +21,8 @@ NUNCA gere pauta cujo assunto seja a automação DESTA conta do X (sistema autô
 
 ## Variação (anti-fadiga)
 - Dentro do lote: pilares e objetivos variados; nunca 2 pautas de mesmo pilar+tema.
-- Contra `<historico_recente>` (últimos 7 dias): não repetir tema nem MOV dominante.
+- Contra `<historico_recente>` (últimos 7 dias): não repetir TEMA/ÂNGULO nem MOV dominante. Atenção: fato ≠ tema — o MESMO fato do banco pode voltar com ângulo e MOV diferentes (o que queima é repetir o ângulo). Manchete de tecnologia em inglês serve de gancho (MOV-11/29): construa você a ponte pro nicho de negócio e escreva a pauta em pt.
+- Lista vazia é proibido: se os insumos estão fracos, entregue MENOS pautas (2-3) com o melhor que houver — nunca zero. Zero pautas = dia sem post = pior resultado possível.
 
 ## Output
 Gere a quantidade pedida em `<task>` (o crítico corta depois; entregue o lote cheio, mas nunca sacrifique a regra do fato pra completar quota — menos pautas boas > quota com pauta fraca).

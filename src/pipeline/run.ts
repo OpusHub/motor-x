@@ -179,6 +179,9 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     timeoutMs: 160_000, // chamada grande (structure-bank inteiro + 8 pautas de output)
     maxTokens: 30000, // reasoning conta no budget — sem folga o JSON sai truncado
   });
+  if (result.pautas.length === 0) {
+    throw new Error("pauteiro devolveu 0 pautas — insumos insuficientes ou conservadorismo demais");
+  }
   const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
   run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
   run.log.push(`pauteiro: ${result.pautas.length} pautas (${result.pautas.map((p) => p.mov).join(", ")})`);
