@@ -26,17 +26,24 @@ async function processAndChain(runId: string): Promise<void> {
     if (process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
       headers["x-vercel-protection-bypass"] = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     }
-    try {
-      const res = await fetch(`${baseUrl()}/api/run/continue`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ runId }),
-      });
-      if (!res.ok) {
-        await notify(`⚠️ motor X: a cadeia do run ${runId} quebrou (HTTP ${res.status}). Retoma pelo dashboard.`);
+    // o elo mais frágil do sistema é este POST — se ele falha, o run congela
+    // até watchdog/chute manual. 3 tentativas antes de desistir.
+    let chained = false;
+    for (let i = 0; i < 3 && !chained; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 2500 * i));
+      try {
+        const res = await fetch(`${baseUrl()}/api/run/continue`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ runId }),
+        });
+        if (res.ok) chained = true;
+      } catch {
+        // tenta de novo
       }
-    } catch {
-      await notify(`⚠️ motor X: a cadeia do run ${runId} quebrou (rede). Retoma pelo dashboard.`);
+    }
+    if (!chained) {
+      await notify(`⚠️ motor X: a cadeia do run ${runId} quebrou (3 tentativas). Retoma pelo dashboard.`);
     }
   }
 }

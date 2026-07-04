@@ -55,6 +55,7 @@ async function runOpenRouter<T>(opts: {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ausente");
   let lastErr: Error | null = null;
+  const FALLBACK_MODEL = "deepseek/deepseek-v4-pro";
   const attempts = opts.timeoutMs > 100_000 ? 1 : 2;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) await sleep(1000 * 2 ** attempt);
@@ -73,10 +74,15 @@ async function runOpenRouter<T>(opts: {
           "X-Title": "Motor X",
         },
         body: JSON.stringify({
-          model: MODEL(opts.agent),
-          // fallback oficial: se o primário (kimi) falhar no provedor, o
-          // OpenRouter cai pro deepseek v4 na MESMA request
-          models: Array.from(new Set([MODEL(opts.agent), "deepseek/deepseek-v4-pro"])),
+          model: attempt === 0 ? MODEL(opts.agent) : FALLBACK_MODEL,
+          // fallback oficial: se o primário falhar no provedor, o OpenRouter
+          // troca na MESMA request. Na 2ª tentativa a ordem INVERTE — timeout
+          // não é "falha de provedor", então sem isso a retry batia de novo
+          // no mesmo modelo lento (visto na noite de 04/jul: kimi degradado).
+          models:
+            attempt === 0
+              ? Array.from(new Set([MODEL(opts.agent), FALLBACK_MODEL]))
+              : Array.from(new Set([FALLBACK_MODEL, MODEL(opts.agent)])),
           // só roteia pra provedores que suportam json_schema/reasoning
           provider: { require_parameters: true },
           max_tokens: opts.maxTokens,
