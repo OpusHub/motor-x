@@ -23,7 +23,18 @@ export async function GET(req: NextRequest) {
     date,
     posts: posts.map((p) => p.data).sort((a, b) => a.scheduledForISO.localeCompare(b.scheduledForISO)),
     run: latestRun
-      ? { id: latestRun.id, stage: latestRun.stage, error: latestRun.error, log: latestRun.log, mode: latestRun.mode }
+      ? {
+          id: latestRun.id,
+          stage: latestRun.stage,
+          error: latestRun.error,
+          log: latestRun.log,
+          mode: latestRun.mode,
+          previa: {
+            drafts: (latestRun.drafts ?? []).map((d) => ({ id: d.pautaId, texto: d.texto })),
+            finalistas: (latestRun.finalistas ?? []).map((f) => ({ id: f.id, texto: f.texto, score: f.score })),
+            mortos: (latestRun.mortos ?? []).map((m) => ({ id: m.id, motivo: m.motivo.slice(0, 120) })),
+          },
+        }
       : null,
   });
 }

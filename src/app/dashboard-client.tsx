@@ -13,6 +13,11 @@ interface RunInfo {
   error?: string;
   log: string[];
   mode: "auto" | "review";
+  previa?: {
+    drafts: { id: string; texto: string }[];
+    finalistas: { id: string; texto: string; score: number }[];
+    mortos: { id: string; motivo: string }[];
+  };
 }
 
 interface PostsData {
@@ -499,6 +504,23 @@ export default function DashboardClient() {
                   retomar
                 </button>
               </div>
+            )}
+
+            {run.stage !== "done" && (run.previa?.drafts.length ?? 0) > 0 && (
+              <details className="log-details" open>
+                <summary>
+                  prévia do lote ({run.previa!.finalistas.length} aprovados · {run.previa!.drafts.length} drafts ·{" "}
+                  {run.previa!.mortos.length} mortos)
+                </summary>
+                <div className="post-list" style={{ marginTop: 8 }}>
+                  {(run.previa!.finalistas.length > 0 ? run.previa!.finalistas : run.previa!.drafts).map((d) => (
+                    <article key={d.id} className="post-card">
+                      {"score" in d && <span className="small muted">score {(d as { score: number }).score}</span>}
+                      <p className="post-text">{d.texto}</p>
+                    </article>
+                  ))}
+                </div>
+              </details>
             )}
 
             {run.log.length > 0 && (
