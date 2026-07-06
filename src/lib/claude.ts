@@ -26,7 +26,10 @@ export type AgentName = "pauteiro" | "ghostwriter" | "critico" | "editor";
 // escrevem staccato e o gate cego deles nao sente. Plumbing (pauteiro/editor)
 // segue kimi barato. Fallback em runtime continua deepseek pra resiliencia.
 const AGENT_DEFAULTS: Record<AgentName, string> = {
-  pauteiro: "moonshotai/kimi-k2.6",
+  // pauteiro tambem sonnet (06/jul): e a UNICA chamada grande inevitavel
+  // (structure-bank inteiro) e kimi E deepseek estouraram 120s x2 na manha
+  // de 06/jul — capacidade paga nao congestiona. ~$0,07/dia.
+  pauteiro: "anthropic/claude-sonnet-5",
   ghostwriter: "anthropic/claude-sonnet-5",
   critico: "anthropic/claude-sonnet-5",
   editor: "moonshotai/kimi-k2.6",
