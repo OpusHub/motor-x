@@ -373,8 +373,8 @@ async function julgarUm(
     ],
     task: { instrucao: "rode as fases A e B neste único draft (variedade/dedup do lote é papel do editor)" },
     schema: CRITICO_SCHEMA,
-    effort: "medium",
-    maxTokens: 6000,
+    effort: "low", // aplicar rubrica em 1 draft não precisa de raciocínio longo — corta ~50% do custo do juiz
+    maxTokens: 5000,
     agent: "critico",
     timeoutMs: 70_000, // por tentativa; 2ª tentativa inverte pro fallback
   });

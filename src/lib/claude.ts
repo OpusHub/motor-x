@@ -25,22 +25,30 @@ export type AgentName = "pauteiro" | "ghostwriter" | "critico" | "editor";
 // ($2/$10 por M; volume diario minusculo ≈ $0,25/dia) porque kimi/deepseek
 // escrevem staccato e o gate cego deles nao sente. Plumbing (pauteiro/editor)
 // segue kimi barato. Fallback em runtime continua deepseek pra resiliencia.
-const AGENT_DEFAULTS: Record<AgentName, string> = {
-  // pauteiro tambem sonnet (06/jul): e a UNICA chamada grande inevitavel
-  // (structure-bank inteiro) e kimi E deepseek estouraram 120s x2 na manha
-  // de 06/jul — capacidade paga nao congestiona. ~$0,07/dia.
-  pauteiro: "anthropic/claude-sonnet-5",
+// Divisao de modelos (decisao Victor+eu 06/jul): Sonnet SO onde mora a voz —
+// escrita (ghostwriter) e gosto (critico). Plumbing (pauteiro/editor) roda
+// kimi barato com SONNET DE RESERVA: a 2a tentativa sobe premium em vez de
+// tentar outro chines congestionado — dia bom custa centavos, dia ruim nao
+// morre. Critico em effort low (rubrica nao precisa de raciocinio longo).
+const AGENT_PRIMARY: Record<AgentName, string> = {
+  pauteiro: "moonshotai/kimi-k2.6",
   ghostwriter: "anthropic/claude-sonnet-5",
   critico: "anthropic/claude-sonnet-5",
-  // editor tambem sonnet (06/jul): kimi 80sx2 morreu na ULTIMA etapa e jogou
-  // fora um run inteiro; a chamada e pequena (~$0,02/dia) e e o gate final.
+  editor: "moonshotai/kimi-k2.6",
+};
+const AGENT_FALLBACK: Record<AgentName, string> = {
+  pauteiro: "anthropic/claude-sonnet-5",
+  ghostwriter: "deepseek/deepseek-v4-pro",
+  critico: "deepseek/deepseek-v4-pro",
   editor: "anthropic/claude-sonnet-5",
 };
+const fallbackOf = (agent?: AgentName) =>
+  (agent && AGENT_FALLBACK[agent]) || "deepseek/deepseek-v4-pro";
 const MODEL = (agent?: AgentName) =>
   (agent && process.env[`MODEL_${agent.toUpperCase()}`]) ||
   process.env.MODEL_ID ||
   (provider() === "openrouter"
-    ? (agent && AGENT_DEFAULTS[agent]) || "moonshotai/kimi-k2.6"
+    ? (agent && AGENT_PRIMARY[agent]) || "moonshotai/kimi-k2.6"
     : "claude-opus-4-8");
 
 // Alguns modelos devolvem o JSON entre cercas ou com preâmbulo — extrai robusto.
@@ -71,8 +79,8 @@ async function runOpenRouter<T>(opts: {
   const key = process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY ausente");
   let lastErr: Error | null = null;
-  const FALLBACK_MODEL = "deepseek/deepseek-v4-pro";
-  // SEMPRE 2 tentativas: a 2ª inverte pro fallback (deepseek). Quem chama
+  const FALLBACK_MODEL = fallbackOf(opts.agent);
+  // SEMPRE 2 tentativas: a 2ª inverte pro fallback do agente. Quem chama
   // dimensiona timeoutMs*2 dentro do orçamento do estágio (maxDuration 300s).
   const attempts = 2;
   for (let attempt = 0; attempt < attempts; attempt++) {
