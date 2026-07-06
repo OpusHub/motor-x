@@ -287,7 +287,7 @@ async function stageDrafts(run: RunState): Promise<void> {
 
 // construção banida reincidente ("não é sobre X, é sobre Y") — o crítico já
 // deixou vazar uma vez (tweet das browser wars); lint em código não vacila
-const LINT_NAO_E_SOBRE = /n[aã]o [eé] (mais )?(s[oó] )?sobre [^,.;\n]{2,60}[,;:—–-]+\s*[eé] sobre/i;
+const LINT_NAO_E_SOBRE = /(n[aã]o [eé]|n[aã]o foi|nunca foi|n[aã]o [eé] quest[aã]o de) (mais )?(s[oó] )?sobre [^,.;\n]{2,60}[,;:—–-]+\s*[eé] sobre/i;
 
 // ---- lints determinísticos de voz (pegam o que o julgamento por LLM deixa vazar) ----
 
@@ -593,7 +593,11 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
   const escolhidos: Selecionado[] = [];
   const vistosAbertura = new Set<string>();
   const vistosCanal = new Set<string>();
-  const clash = (t: string) => vistosAbertura.has(abertura(t)) || canais(t).some((c) => vistosCanal.has(c));
+  const citandoTotal = () => escolhidos.filter((e) => canais(textoDe(e.id)).length > 0).length;
+  const clash = (t: string) =>
+    vistosAbertura.has(abertura(t)) ||
+    canais(t).some((c) => vistosCanal.has(c)) ||
+    (canais(t).length > 0 && citandoTotal() >= 2);
   const marca = (t: string) => { vistosAbertura.add(abertura(t)); for (const c of canais(t)) vistosCanal.add(c); };
   const fila = [...result.selecionados];
   const reservas = (run.finalistas ?? [])

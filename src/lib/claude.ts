@@ -32,7 +32,9 @@ const AGENT_DEFAULTS: Record<AgentName, string> = {
   pauteiro: "anthropic/claude-sonnet-5",
   ghostwriter: "anthropic/claude-sonnet-5",
   critico: "anthropic/claude-sonnet-5",
-  editor: "moonshotai/kimi-k2.6",
+  // editor tambem sonnet (06/jul): kimi 80sx2 morreu na ULTIMA etapa e jogou
+  // fora um run inteiro; a chamada e pequena (~$0,02/dia) e e o gate final.
+  editor: "anthropic/claude-sonnet-5",
 };
 const MODEL = (agent?: AgentName) =>
   (agent && process.env[`MODEL_${agent.toUpperCase()}`]) ||
