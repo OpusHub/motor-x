@@ -335,6 +335,9 @@ function copiaDeAmostra(texto: string, amostras: string): string | null {
 }
 
 function lintDraft(texto: string, historico: string[]): string | null {
+  if (/[—–]/.test(texto)) {
+    return "lint: travessão (— ou –) é banido na voz do Victor em qualquer hipótese — troque por vírgula, ponto ou quebra de linha";
+  }
   if (LINT_NAO_E_SOBRE.test(texto)) {
     return "lint: construção banida 'não é sobre X, é sobre Y' (clichê de IA da banlist) — reescreva a virada com outra forma";
   }
@@ -382,8 +385,10 @@ async function julgarLote(
   drafts: { id: string; texto: string; pauta?: Pauta }[],
   contextoExtra?: string
 ): Promise<{ finalistas: Finalista[]; mortos: Morto[] }> {
-  const partes = await Promise.all(
-    drafts.map(async (d) => {
+  // 1º draft sozinho AQUECE o prompt cache (system idêntico); os demais em
+  // paralelo pagam 10% do input. Custa ~30s de latência, corta ~70% da conta.
+  const [primeiro, ...resto] = drafts;
+  const julgaSeguro = async (d: (typeof drafts)[number]) => {
       try {
         return await julgarUm(run, d, contextoExtra);
       } catch (err) {
@@ -398,8 +403,9 @@ async function julgarLote(
           ],
         };
       }
-    })
-  );
+  };
+  const partes = primeiro ? [await julgaSeguro(primeiro)] : [];
+  partes.push(...(await Promise.all(resto.map(julgaSeguro))));
   return {
     finalistas: partes.flatMap((p) => p.finalistas),
     mortos: partes.flatMap((p) => p.mortos),
@@ -578,7 +584,34 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
     agent: "editor",
   });
 
-  run.selecionados = result.selecionados.slice(0, config.postsPerDay);
+  // dedup determinístico ("memória mínima" que o LLM não garante): 2 posts do
+  // mesmo dia não podem abrir com a mesma fórmula nem citar o mesmo canal-fonte
+  // (06/jul saíram "vi uma thread no r/sideproject" E "vi rolando no r/sideproject")
+  const textoDe = (id: string) => (run.finalistas ?? []).find((f) => f.id === id)?.texto ?? "";
+  const abertura = (t: string) => t.toLowerCase().split(/\s+/).slice(0, 2).join(" ");
+  const canais = (t: string) => (t.toLowerCase().match(/r\/[a-z0-9_]+|hacker news|\bhn\b|product hunt/g) ?? []);
+  const escolhidos: Selecionado[] = [];
+  const vistosAbertura = new Set<string>();
+  const vistosCanal = new Set<string>();
+  const clash = (t: string) => vistosAbertura.has(abertura(t)) || canais(t).some((c) => vistosCanal.has(c));
+  const marca = (t: string) => { vistosAbertura.add(abertura(t)); for (const c of canais(t)) vistosCanal.add(c); };
+  const fila = [...result.selecionados];
+  const reservas = (run.finalistas ?? [])
+    .filter((f) => !fila.some((s) => s.id === f.id))
+    .sort((a, b) => b.score - a.score);
+  for (const sel of fila) {
+    const t = textoDe(sel.id);
+    if (!clash(t)) { escolhidos.push(sel); marca(t); continue; }
+    const substituto = reservas.find((f) => !clash(f.texto) && !escolhidos.some((e) => e.id === f.id));
+    if (substituto) {
+      escolhidos.push({ ...sel, id: substituto.id });
+      marca(substituto.texto);
+      run.log.push(`editor-troca: ${sel.id} repetia abertura/canal do dia → entrou ${substituto.id}`);
+    } else {
+      run.log.push(`editor-corte: ${sel.id} repetia abertura/canal e não havia reserva sem repetição`);
+    }
+  }
+  run.selecionados = escolhidos.slice(0, config.postsPerDay);
   run.log.push(`editor: ${run.selecionados.length} selecionados, ${result.descartados.length} descartados`);
   for (const d of result.descartados) run.log.push(`editor-descartou ${d.id}: ${d.motivo.slice(0, 100)}`);
   if (run.selecionados.length === 0) throw new Error("editor não selecionou nenhum post");

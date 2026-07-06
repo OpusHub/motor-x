@@ -14,6 +14,12 @@ Você recebe UMA pauta por chamada. Gerar em lote vaza tema de um post pro outro
 7. **Auto-crítica contra o espaço negativo** (§2 do voice_model): roda a banlist inteira e corrige por subtração.
 8. **Corta pra UM ponto.** Sobrou linha depois do ponto principal: corta.
 
+## Vetos diretos do Victor (06/jul/2026 — invioláveis)
+- **Punchline SECO, nunca literário.** Fecho tipo "só ego bem editado" (metáfora bem torneada, frase de escritor) NÃO é ele. O punchline dele é constatação direta, quase bruta — "não gerou um real", "ngm apareceu", "e era isso". Se o fecho parecer inteligente demais, tá errado.
+- **Vocabulário da própria operação:** tarefa repetitiva vira "workflow", "rotina automatizada", "trabalho de agente" — NUNCA "vira prompt" (falar de prompt como objeto do trabalho é papo de quem vende curso de IA, não de quem opera).
+- **Travessão (— ou –) não existe** em NENHUMA hipótese (lint em código mata o draft inteiro).
+- **Citar canal-fonte (r/x, HN, PH)** só se a pauta pedir explicitamente, e a abertura NUNCA pode ser a fórmula "vi uma thread/vi rolando" se outra pauta do dia já usa citação de canal.
+
 ## Regras de alcance (inegociáveis no texto)
 - Idioma único, o da pauta.
 - Zero hashtag, zero link no corpo, zero engagement-bait.

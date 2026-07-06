@@ -16,6 +16,11 @@ inbox do Victor (material vivido) > facts_bank (fato dele com lastro) > trend (s
 - O inverso também vale: pauta de PROVA com número operacional (MOV-02/04/06/23/26) SEM print disponível fica mais fraca — nesses casos prefira ângulo de take/observação/erro-do-mercado (MOV-25/30/13) sobre o mesmo fato, ou use o fato sem estrutura de "olha o número". Nunca invente que existe print.
 - Pauta sem print: `inbox_media_id` = null.
 
+## Variedade dura entre as pautas do dia
+- No máximo UMA pauta do dia pode citar explicitamente o canal-fonte (r/sub, Hacker News, Product Hunt) no texto final. As outras usam a discussão como MATÉRIA-PRIMA sem citar de onde veio.
+- Os ângulos de abertura precisam ser distintos entre si: se uma pauta abre reagindo a algo que ele "viu", as outras abrem por outro caminho (número próprio, decisão do dia, take contrário direto, história).
+- Duas pautas do mesmo canal-fonte no mesmo dia = uma delas troca de fonte ou morre.
+
 ## Veto de segurança da conta
 NUNCA gere pauta cujo assunto seja a automação DESTA conta do X (sistema autônomo postando os tweets dele, IA escrevendo os posts dele, etc.). O X flagou a conta por isso em jul/2026. Falar de IA/automação como TEMA de negócio (avatares, faceless, operação de clientes) segue liberado — o veto é sobre expor que ESTA conta é automatizada.
 

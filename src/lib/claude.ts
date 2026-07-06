@@ -106,7 +106,19 @@ async function runOpenRouter<T>(opts: {
           // de 10 minutos de cadeia de raciocínio
           reasoning: { effort: opts.effort },
           messages: [
-            { role: "system", content: opts.systemText },
+            // prompt caching (Anthropic via OpenRouter): o system é IDÊNTICO em
+            // toda chamada do mesmo agente — cache read custa 10% do input.
+            // Provedor sem suporte ignora o cache_control (OpenRouter descarta).
+            {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: opts.systemText,
+                  cache_control: { type: "ephemeral" },
+                },
+              ],
+            },
             {
               role: "user",
               content: `${opts.userText}\n\nResponda SOMENTE com o JSON no formato pedido, sem texto fora do JSON.`,
