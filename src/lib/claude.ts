@@ -37,10 +37,12 @@ const AGENT_PRIMARY: Record<AgentName, string> = {
   editor: "moonshotai/kimi-k2.6",
 };
 const AGENT_FALLBACK: Record<AgentName, string> = {
-  pauteiro: "anthropic/claude-sonnet-5",
+  // reserva do plumbing e HAIKU (pedido do Victor 06/jul): capacidade
+  // Anthropic que nao congestiona, na metade do preco do sonnet
+  pauteiro: "anthropic/claude-haiku-4.5",
   ghostwriter: "deepseek/deepseek-v4-pro",
   critico: "deepseek/deepseek-v4-pro",
-  editor: "anthropic/claude-sonnet-5",
+  editor: "anthropic/claude-haiku-4.5",
 };
 const fallbackOf = (agent?: AgentName) =>
   (agent && AGENT_FALLBACK[agent]) || "deepseek/deepseek-v4-pro";
