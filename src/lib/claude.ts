@@ -20,12 +20,23 @@ function provider(): Provider {
 export type AgentName = "pauteiro" | "ghostwriter" | "critico" | "editor";
 
 // Modelo por agente: MODEL_PAUTEIRO / MODEL_GHOSTWRITER / MODEL_CRITICO /
-// MODEL_EDITOR vencem; senao MODEL_ID; senao o default do provider.
-// Experimento barato: MODEL_PAUTEIRO=deepseek/deepseek-v4-flash
+// MODEL_EDITOR vencem; senao MODEL_ID; senao o default POR AGENTE abaixo.
+// Decisao 06/jul: a VOZ e o produto — ghostwriter e critico rodam Sonnet 5
+// ($2/$10 por M; volume diario minusculo ≈ $0,25/dia) porque kimi/deepseek
+// escrevem staccato e o gate cego deles nao sente. Plumbing (pauteiro/editor)
+// segue kimi barato. Fallback em runtime continua deepseek pra resiliencia.
+const AGENT_DEFAULTS: Record<AgentName, string> = {
+  pauteiro: "moonshotai/kimi-k2.6",
+  ghostwriter: "anthropic/claude-sonnet-5",
+  critico: "anthropic/claude-sonnet-5",
+  editor: "moonshotai/kimi-k2.6",
+};
 const MODEL = (agent?: AgentName) =>
   (agent && process.env[`MODEL_${agent.toUpperCase()}`]) ||
   process.env.MODEL_ID ||
-  (provider() === "openrouter" ? "moonshotai/kimi-k2.6" : "claude-opus-4-8");
+  (provider() === "openrouter"
+    ? (agent && AGENT_DEFAULTS[agent]) || "moonshotai/kimi-k2.6"
+    : "claude-opus-4-8");
 
 // Alguns modelos devolvem o JSON entre cercas ou com preâmbulo — extrai robusto.
 function extractJSON<T>(raw: string): T {
@@ -56,7 +67,9 @@ async function runOpenRouter<T>(opts: {
   if (!key) throw new Error("OPENROUTER_API_KEY ausente");
   let lastErr: Error | null = null;
   const FALLBACK_MODEL = "deepseek/deepseek-v4-pro";
-  const attempts = opts.timeoutMs > 100_000 ? 1 : 2;
+  // SEMPRE 2 tentativas: a 2ª inverte pro fallback (deepseek). Quem chama
+  // dimensiona timeoutMs*2 dentro do orçamento do estágio (maxDuration 300s).
+  const attempts = 2;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt > 0) await sleep(1000 * 2 ** attempt);
     // Timeout por tentativa: sem isso uma geração pendurada segura a função

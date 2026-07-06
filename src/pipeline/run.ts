@@ -6,6 +6,8 @@ import { notify, readInbox } from "@/lib/telegram";
 import { nicheTrends, victorRecentTweets } from "@/lib/twitterapi";
 import { rssTrends } from "@/lib/rss";
 import { redditSignal } from "@/lib/sources/reddit";
+import { hnSignal } from "@/lib/sources/hackernews";
+import { productHuntSignal } from "@/lib/sources/producthunt";
 import { createPost, personalAccounts, ZernioError } from "@/lib/zernio";
 import {
   AppConfig,
@@ -113,13 +115,22 @@ async function stageGather(run: RunState): Promise<void> {
   const factsBank = JSON.parse(ASSETS.factsBank) as { facts: { id: string; fato: string; fonte: string }[] };
   const dynamicFacts = (await getJSON<{ facts: { id: string; fato: string; fonte: string }[] }>("facts.json"))?.facts ?? [];
 
-  // fonte externa: X (se twitterapi tiver crédito) → Reddit (grátis, seguro,
-  // discussão real de founder/SaaS) → RSS genérico (só se tudo falhar)
+  // fonte externa: X (se twitterapi tiver crédito) → mix grátis Reddit + HN +
+  // Product Hunt (3 hosts independentes: um cair não zera o dia) → RSS genérico
   let trends = twitterTrends;
   let trendsFonte = "x";
   if (trends.length === 0) {
-    trends = await redditSignal(8, run.date);
-    trendsFonte = "reddit";
+    const [reddit, hn, ph] = await Promise.all([
+      redditSignal(4, run.date),
+      hnSignal(4),
+      productHuntSignal(2),
+    ]);
+    const mix: typeof trends = [];
+    for (let i = 0; i < 4; i++) {
+      for (const list of [reddit, hn, ph]) if (list[i]) mix.push(list[i]);
+    }
+    trends = mix.slice(0, 10);
+    trendsFonte = `reddit${reddit.length}+hn${hn.length}+ph${ph.length}`;
   }
   if (trends.length === 0) {
     trends = await rssTrends(6);
@@ -187,7 +198,7 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     schema: PAUTAS_SCHEMA,
     effort: "medium",
     agent: "pauteiro",
-    timeoutMs: 160_000, // chamada grande (structure-bank inteiro + 8 pautas de output)
+    timeoutMs: 120_000, // por tentativa (2ª inverte pro deepseek) — 2x120 cabe no maxDuration
     maxTokens: 30000, // reasoning conta no budget — sem folga o JSON sai truncado
   });
   if (result.pautas.length === 0) {
@@ -224,6 +235,7 @@ async function stageDrafts(run: RunState): Promise<void> {
         agentPrompt: AGENTS.ghostwriter,
         stableDocs: [
           { tag: "voice_model", content: ASSETS.voiceModel },
+          { tag: "registro_acido", content: ASSETS.registroAcido },
           { tag: "victor_profile", content: ASSETS.victorProfile },
         ],
         dynamicDocs: [
@@ -277,6 +289,123 @@ async function stageDrafts(run: RunState): Promise<void> {
 // deixou vazar uma vez (tweet das browser wars); lint em código não vacila
 const LINT_NAO_E_SOBRE = /n[aã]o [eé] (mais )?(s[oó] )?sobre [^,.;\n]{2,60}[,;:—–-]+\s*[eé] sobre/i;
 
+// ---- lints determinísticos de voz (pegam o que o julgamento por LLM deixa vazar) ----
+
+const STOPWORDS = new Set(
+  "o a os as um uma de do da dos das que q pra pro por em no na nos nas e é eh se vc voce com mas mais ou ja já nao não n eu meu minha sua seu isso esse essa ele ela tem ser foi como ao à te ta tá to tô".split(" ")
+);
+
+function stems(texto: string): Set<string> {
+  return new Set(
+    texto
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+      .map((w) => w.slice(0, 5))
+  );
+}
+
+// quase-duplicata semântica barata: Jaccard de radicais (pegou o "erro de
+// validar produto antes do canal" saindo 2 dias seguidos com outras palavras)
+function quaseIgual(a: string, b: string): boolean {
+  const sa = stems(a);
+  const sb = stems(b);
+  if (sa.size < 6 || sb.size < 6) return false;
+  let inter = 0;
+  for (const w of sa) if (sb.has(w)) inter++;
+  return inter / (sa.size + sb.size - inter) > 0.42;
+}
+
+// amostra de voz é régua de RITMO, não banco de frases: 6+ palavras literais
+// de uma amostra dentro do draft = cópia ("só ajustando oq da pra ajustar" 2x)
+function copiaDeAmostra(texto: string, amostras: string): string | null {
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, " ").trim();
+  const alvo = norm(texto);
+  for (const bloco of amostras.split(/\n/)) {
+    const palavras = norm(bloco).split(" ");
+    for (let i = 0; i + 6 <= palavras.length; i++) {
+      const janela = palavras.slice(i, i + 6).join(" ");
+      if (janela.length > 24 && alvo.includes(janela)) return janela;
+    }
+  }
+  return null;
+}
+
+function lintDraft(texto: string, historico: string[]): string | null {
+  if (LINT_NAO_E_SOBRE.test(texto)) {
+    return "lint: construção banida 'não é sobre X, é sobre Y' (clichê de IA da banlist) — reescreva a virada com outra forma";
+  }
+  const copia = copiaDeAmostra(texto, ASSETS.voiceSamples);
+  if (copia) {
+    return `lint: copiou trecho literal de amostra de voz ("${copia}") — amostra é régua de ritmo, não banco de frases; diga a MESMA coisa com frase nova`;
+  }
+  if (historico.some((h) => quaseIgual(texto, h))) {
+    return "lint: quase idêntico a post recente do histórico (mesma ideia, mesmas palavras-chave) — mude o TEMA da pauta, não só a redação";
+  }
+  return null;
+}
+
+// julga UM draft (fases A e B). Chamada pequena = termina rápido, ganha retry
+// com inversão de modelo, e uma falha não derruba o lote — era a chamada única
+// gigante do lote que estourava timeout em noite de provedor lento.
+async function julgarUm(
+  run: RunState,
+  draft: { id: string; texto: string; pauta?: Pauta },
+  contextoExtra?: string
+): Promise<{ finalistas: Finalista[]; mortos: Morto[] }> {
+  return runAgent<{ finalistas: Finalista[]; mortos: Morto[] }>({
+    agentPrompt: AGENTS.critico,
+    stableDocs: [
+      { tag: "voice_model", content: ASSETS.voiceModel },
+      { tag: "victor_profile", content: ASSETS.victorProfile },
+      { tag: "algorithm_rules", content: ASSETS.algorithmRules },
+    ],
+    dynamicDocs: [
+      { tag: "anchors", content: (run.insumos?.voiceAnchors ?? []).join("\n---\n") },
+      { tag: "drafts", content: JSON.stringify([draft], null, 2) },
+      ...(contextoExtra ? [{ tag: "contexto", content: contextoExtra }] : []),
+    ],
+    task: { instrucao: "rode as fases A e B neste único draft (variedade/dedup do lote é papel do editor)" },
+    schema: CRITICO_SCHEMA,
+    effort: "medium",
+    maxTokens: 6000,
+    agent: "critico",
+    timeoutMs: 70_000, // por tentativa; 2ª tentativa inverte pro fallback
+  });
+}
+
+async function julgarLote(
+  run: RunState,
+  drafts: { id: string; texto: string; pauta?: Pauta }[],
+  contextoExtra?: string
+): Promise<{ finalistas: Finalista[]; mortos: Morto[] }> {
+  const partes = await Promise.all(
+    drafts.map(async (d) => {
+      try {
+        return await julgarUm(run, d, contextoExtra);
+      } catch (err) {
+        // julgamento indisponível = draft NÃO publica (seguro), mas é recuperável
+        return {
+          finalistas: [],
+          mortos: [
+            {
+              id: d.id,
+              motivo: `não julgado: crítico falhou 2x (${err instanceof Error ? err.message.slice(0, 60) : "erro"}) — tente de novo`,
+            },
+          ],
+        };
+      }
+    })
+  );
+  return {
+    finalistas: partes.flatMap((p) => p.finalistas),
+    mortos: partes.flatMap((p) => p.mortos),
+  };
+}
+
 async function stageCritico(run: RunState): Promise<void> {
   const pautasById = new Map((run.pautas ?? []).map((p) => [p.id, p]));
   const todos = (run.drafts ?? []).map((d) => ({
@@ -285,74 +414,22 @@ async function stageCritico(run: RunState): Promise<void> {
     pauta: pautasById.get(d.pautaId),
   }));
 
-  // lint determinístico ANTES do LLM: reincidência da banlist não passa 2x.
-  // Motivo sem "p0" → conta como recuperável → regen reescreve com a instrução.
+  // lints determinísticos ANTES do LLM (motivo sem "p0" → recuperável → regen)
   const lintMortos: Morto[] = [];
+  const historico = run.insumos?.historico ?? [];
   const drafts = todos.filter((d) => {
-    if (LINT_NAO_E_SOBRE.test(d.texto)) {
-      lintMortos.push({ id: d.id, motivo: "lint: construção banida 'não é sobre X, é sobre Y' (clichê de IA da banlist) — reescreva a virada com outra forma" });
+    const motivo = lintDraft(d.texto, historico);
+    if (motivo) {
+      lintMortos.push({ id: d.id, motivo });
       return false;
     }
     return true;
   });
   if (lintMortos.length > 0) run.log.push(`crítico: lint matou ${lintMortos.length} draft(s) antes do LLM`);
 
-  const julgar = (lote: typeof todos, opts: { effort: "medium" | "high"; timeoutMs: number; maxTokens: number; instrucao: string }) =>
-    runAgent<{ finalistas: Finalista[]; mortos: Morto[] }>({
-      agentPrompt: AGENTS.critico,
-      stableDocs: [
-        { tag: "voice_model", content: ASSETS.voiceModel },
-        { tag: "victor_profile", content: ASSETS.victorProfile },
-        { tag: "algorithm_rules", content: ASSETS.algorithmRules },
-      ],
-      dynamicDocs: [
-        { tag: "anchors", content: (run.insumos?.voiceAnchors ?? []).join("\n---\n") },
-        { tag: "drafts", content: JSON.stringify(lote, null, 2) },
-      ],
-      task: { instrucao: opts.instrucao },
-      schema: CRITICO_SCHEMA,
-      effort: opts.effort,
-      maxTokens: opts.maxTokens,
-      agent: "critico",
-      timeoutMs: opts.timeoutMs,
-    });
-
-  let finalistas: Finalista[] = [];
-  const mortos: Morto[] = [...lintMortos];
-
-  if (drafts.length > 0) {
-    try {
-      const r = await julgar(drafts, {
-        effort: "high",
-        timeoutMs: 150_000,
-        maxTokens: 16000,
-        instrucao: "rode as fases A, B e C no lote inteiro",
-      });
-      finalistas = r.finalistas;
-      mortos.push(...r.mortos);
-    } catch (err) {
-      // plano B: modelo lento (ex: fallback deepseek) estoura a chamada única —
-      // fatia o lote em 2 chamadas menores em paralelo, que sempre terminam.
-      // A Fase C (dedup entre fatias) fica coberta pelo editor, que já descarta tema repetido.
-      run.log.push(`crítico: chamada única falhou (${err instanceof Error ? err.message.slice(0, 80) : "erro"}), fatiando o lote em 2`);
-      const meio = Math.ceil(drafts.length / 2);
-      const fatias = [drafts.slice(0, meio), drafts.slice(meio)].filter((f) => f.length > 0);
-      const partes = await Promise.all(
-        fatias.map((f) =>
-          julgar(f, {
-            effort: "medium",
-            timeoutMs: 110_000,
-            maxTokens: 10000,
-            instrucao: "rode as fases A e B nesta fatia do lote (o dedup entre lotes será feito depois pelo editor)",
-          })
-        )
-      );
-      for (const parte of partes) {
-        finalistas.push(...parte.finalistas);
-        mortos.push(...parte.mortos);
-      }
-    }
-  }
+  const r = drafts.length > 0 ? await julgarLote(run, drafts) : { finalistas: [], mortos: [] };
+  const finalistas = r.finalistas;
+  const mortos = [...lintMortos, ...r.mortos];
 
   run.finalistas = finalistas;
   run.mortos = mortos;
@@ -412,6 +489,7 @@ async function stageRegen(run: RunState): Promise<void> {
         agentPrompt: AGENTS.ghostwriter,
         stableDocs: [
           { tag: "voice_model", content: ASSETS.voiceModel },
+          { tag: "registro_acido", content: ASSETS.registroAcido },
           { tag: "victor_profile", content: ASSETS.victorProfile },
         ],
         dynamicDocs: [
@@ -444,30 +522,23 @@ async function stageRegen(run: RunState): Promise<void> {
     return;
   }
 
-  // segunda passada do crítico só nas reescritas
+  // segunda passada do crítico só nas reescritas — mesmo caminho per-draft do
+  // stageCritico (chamada pequena com retry invertido; sem lote gigante)
   const draftsComPauta = novos.map((d) => ({ id: d.pautaId, texto: d.texto, pauta: pautasById.get(d.pautaId) }));
-  const result = await runAgent<{ finalistas: Finalista[]; mortos: Morto[] }>({
-    agentPrompt: AGENTS.critico,
-    stableDocs: [
-      { tag: "voice_model", content: ASSETS.voiceModel },
-      { tag: "victor_profile", content: ASSETS.victorProfile },
-      { tag: "algorithm_rules", content: ASSETS.algorithmRules },
-    ],
-    dynamicDocs: [
-      { tag: "anchors", content: (run.insumos?.voiceAnchors ?? []).join("\n---\n") },
-      { tag: "drafts", content: JSON.stringify(draftsComPauta, null, 2) },
-      {
-        tag: "contexto",
-        content: `Estas são REESCRITAS de drafts mortos na primeira rodada. Finalistas já aprovados (evite duplicar âncora/tema com eles na Fase C): ${JSON.stringify((run.finalistas ?? []).map((f) => f.texto))}`,
-      },
-    ],
-    task: { instrucao: "julgue só estas reescritas (fases A, B e C)" },
-    schema: CRITICO_SCHEMA,
-    effort: "high",
-    maxTokens: 12000,
-    agent: "critico",
-    timeoutMs: 160_000,
+  const historico = run.insumos?.historico ?? [];
+  const lintados = draftsComPauta.filter((d) => {
+    const motivo = lintDraft(d.texto, historico);
+    if (motivo) {
+      run.mortos = [...(run.mortos ?? []), { id: d.id, motivo: `${motivo} (na reescrita)` }];
+      return false;
+    }
+    return true;
   });
+  const result = await julgarLote(
+    run,
+    lintados,
+    `Este draft é uma REESCRITA de um draft morto na primeira rodada. Finalistas já aprovados do dia (não é papel seu deduplicar, mas conte como contexto): ${JSON.stringify((run.finalistas ?? []).map((f) => f.texto))}`
+  );
 
   // substitui os drafts mortos pelas reescritas aprovadas
   run.drafts = (run.drafts ?? []).map((d) => novos.find((n) => n.pautaId === d.pautaId) ?? d);

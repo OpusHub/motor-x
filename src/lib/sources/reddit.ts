@@ -53,6 +53,15 @@ function seedPick<T>(arr: T[], n: number, seed: string): T[] {
 }
 
 async function fetchSub(sub: string, tag: string): Promise<RedditEntry[]> {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    if (tentativa > 0) await new Promise((r) => setTimeout(r, 1500));
+    const out = await fetchSubOnce(sub, tag);
+    if (out.length > 0) return out;
+  }
+  return [];
+}
+
+async function fetchSubOnce(sub: string, tag: string): Promise<RedditEntry[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 9000);
   try {
