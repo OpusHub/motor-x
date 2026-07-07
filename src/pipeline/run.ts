@@ -136,6 +136,18 @@ async function stageGather(run: RunState): Promise<void> {
     trends = await rssTrends(6);
     trendsFonte = "rss";
   }
+  // blindagem do horário do cron (5:57 — reddit/HN às vezes vazios): se tudo
+  // falhou, reusa o último trends bom (repetir tema perde pra pauta sem fato
+  // externo). Quando há trends novo, persiste pra amanhã.
+  if (trends.length > 0) {
+    await putJSON("state/last-trends.json", { date: run.date, trends });
+  } else {
+    const cache = await getJSON<{ date: string; trends: typeof trends }>("state/last-trends.json");
+    if (cache?.trends?.length) {
+      trends = cache.trends;
+      trendsFonte = `cache-${cache.date}`;
+    }
+  }
   if (trends.length === 0) trendsFonte = "nenhuma";
 
   const voiceAnchors =
@@ -616,9 +628,29 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
     }
   }
   run.selecionados = escolhidos.slice(0, config.postsPerDay);
+
+  // PISO (nunca zerar com material na mesa): se o LLM+dedup descartou TUDO por
+  // "repete tema de ontem", repetir um tema um dia depois é melhor que slot
+  // vazio. Pega os melhores finalistas diversos ENTRE SI (variedade do dia >
+  // variedade vs ontem). Era o bug de 07/jul: 4 finalistas 80-88, editor zerou.
+  if (run.selecionados.length === 0 && (run.finalistas ?? []).length > 0) {
+    const piso: Selecionado[] = [];
+    const vA = new Set<string>();
+    const vC = new Set<string>();
+    for (const f of [...(run.finalistas ?? [])].sort((a, b) => b.score - a.score)) {
+      if (piso.length >= config.postsPerDay) break;
+      if (piso.length > 0 && (vA.has(abertura(f.texto)) || canais(f.texto).some((c) => vC.has(c)))) continue;
+      piso.push({ id: f.id, rank: piso.length + 1, janela: piso.length === 0 ? "almoco" : "tarde", motivo: "piso: melhor finalista (editor havia zerado por dedup vs agenda)" });
+      vA.add(abertura(f.texto));
+      for (const c of canais(f.texto)) vC.add(c);
+    }
+    run.selecionados = piso;
+    run.log.push(`editor-piso: ${piso.length} na força — LLM descartou todos por tema vs ontem, mas há finalista aprovado`);
+  }
+
   run.log.push(`editor: ${run.selecionados.length} selecionados, ${result.descartados.length} descartados`);
   for (const d of result.descartados) run.log.push(`editor-descartou ${d.id}: ${d.motivo.slice(0, 100)}`);
-  if (run.selecionados.length === 0) throw new Error("editor não selecionou nenhum post");
+  if (run.selecionados.length === 0) throw new Error("editor não selecionou nenhum post (sem finalistas)");
   run.stage = "agendar";
 }
 
