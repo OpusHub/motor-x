@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { VozSection } from "./voz-client";
 import type { AppConfig, InboxItem, RunStage, ScheduledPost } from "@/lib/types";
 
 // ---------- tipos da API ----------
@@ -803,6 +804,8 @@ export default function DashboardClient() {
           )}
         </details>
       </section>
+
+      <VozSection showToast={showToast} />
 
       {toast && <div className="toast">{toast}</div>}
     </main>

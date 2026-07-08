@@ -1,4 +1,6 @@
-import { AGENTS, ASSETS } from "@/prompts/bundle";
+import { ASSETS } from "@/prompts/bundle";
+import { getPrompt } from "@/lib/overrides";
+import { Dicionario, dicionarioDoc, loadDicionario, violacaoDicionario } from "@/lib/dicionario";
 import { describeImage, runAgent, sampleVoiceSeeds } from "@/lib/claude";
 import { loadConfig } from "@/lib/config";
 import { getJSON, listJSON, putJSON } from "@/lib/store";
@@ -174,7 +176,7 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
   const insumos = run.insumos!;
   const quantidade = Math.min(Math.ceil(config.postsPerDay * 1.6), 10);
   const result = await runAgent<{ pautas: Pauta[] }>({
-    agentPrompt: AGENTS.pauteiro,
+    agentPrompt: await getPrompt("pauteiro"),
     stableDocs: [
       { tag: "linha_editorial", content: ASSETS.linhaEditorial },
       { tag: "victor_profile", content: ASSETS.victorProfile },
@@ -213,12 +215,43 @@ async function stagePautas(run: RunState, config: AppConfig): Promise<void> {
     timeoutMs: 120_000, // por tentativa (2ª inverte pro deepseek) — 2x120 cabe no maxDuration
     maxTokens: 30000, // reasoning conta no budget — sem folga o JSON sai truncado
   });
-  if (result.pautas.length === 0) {
-    throw new Error("pauteiro devolveu 0 pautas — insumos insuficientes ou conservadorismo demais");
+  let pautasOut = result.pautas;
+  if (pautasOut.length === 0) {
+    // kimi às vezes devolve lista vazia como SUCESSO (08/jul às 5:57) — o retry
+    // de erro não dispara. Segunda chance no haiku antes de desistir do dia.
+    run.log.push("pauteiro: 0 pautas do titular, retry no haiku");
+    const retry = await runAgent<{ pautas: Pauta[] }>({
+      agentPrompt: await getPrompt("pauteiro"),
+      stableDocs: [
+        { tag: "linha_editorial", content: ASSETS.linhaEditorial },
+        { tag: "victor_profile", content: ASSETS.victorProfile },
+        { tag: "structure_bank", content: ASSETS.structureBank },
+      ],
+      dynamicDocs: [
+        { tag: "insumos_resumo", content: `inbox: ${insumos.inbox.length} itens; trends: ${insumos.trends.map((t) => t.texto.slice(0, 120)).join(" | ") || "nenhum"}; fatos: ${insumos.facts.map((f) => f.fato.slice(0, 100)).join(" | ")}` },
+        { tag: "historico_recente", content: insumos.historico.join("\n---\n") || "(nenhum post recente)" },
+      ],
+      task: {
+        data: run.date,
+        quantidade_pautas: quantidade,
+        posts_do_dia: config.postsPerDay,
+        instrucao: "lista vazia é proibido: entregue no MÍNIMO 2 pautas mesmo com insumo fraco (use os fatos do banco por ângulos novos)",
+      },
+      schema: PAUTAS_SCHEMA,
+      effort: "medium",
+      agent: "pauteiro",
+      timeoutMs: 110_000,
+      maxTokens: 20000,
+      modelOverride: "anthropic/claude-haiku-4.5",
+    });
+    pautasOut = retry.pautas;
+  }
+  if (pautasOut.length === 0) {
+    throw new Error("pauteiro devolveu 0 pautas (titular e retry) — insumos insuficientes");
   }
   const tag = run.startedAt.slice(11, 19).replace(/:/g, "");
-  run.pautas = result.pautas.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
-  run.log.push(`pauteiro: ${result.pautas.length} pautas (${result.pautas.map((p) => p.mov).join(", ")})`);
+  run.pautas = pautasOut.map((p, i) => ({ ...p, id: `${tag}p${i + 1}` }));
+  run.log.push(`pauteiro: ${pautasOut.length} pautas (${pautasOut.map((p) => `${p.mov}/${p.forma ?? "?"}`).join(", ")})`);
   run.stage = "drafts";
 }
 
@@ -244,10 +277,12 @@ async function stageDrafts(run: RunState): Promise<void> {
       const seeds = sampleVoiceSeeds(ASSETS.voiceSamples, 4, `${run.id}-${pauta.id}`);
       const media = mediaItemOf(run, pauta);
       const out = await runAgent<{ texto: string; seed_descartada: string }>({
-        agentPrompt: AGENTS.ghostwriter,
+        agentPrompt: await getPrompt("ghostwriter"),
         stableDocs: [
           { tag: "voice_model", content: ASSETS.voiceModel },
-          { tag: "registro_acido", content: ASSETS.registroAcido },
+          { tag: "registro_acido", content: await getPrompt("registroAcido") },
+          { tag: "registro_real", content: await getPrompt("registroReal") },
+          { tag: "dicionario_de_voz", content: dicionarioDoc(await loadDicionario()) },
           { tag: "victor_profile", content: ASSETS.victorProfile },
         ],
         dynamicDocs: [
@@ -346,14 +381,18 @@ function copiaDeAmostra(texto: string, amostras: string): string | null {
   return null;
 }
 
-function lintDraft(texto: string, historico: string[]): string | null {
+function lintDraft(texto: string, historico: string[], dic?: Dicionario): string | null {
+  if (dic) {
+    const v = violacaoDicionario(texto, dic);
+    if (v) return `lint: ${v}`;
+  }
   if (/[—–]/.test(texto)) {
     return "lint: travessão (— ou –) é banido na voz do Victor em qualquer hipótese — troque por vírgula, ponto ou quebra de linha";
   }
   if (LINT_NAO_E_SOBRE.test(texto)) {
     return "lint: construção banida 'não é sobre X, é sobre Y' (clichê de IA da banlist) — reescreva a virada com outra forma";
   }
-  const copia = copiaDeAmostra(texto, ASSETS.voiceSamples);
+  const copia = copiaDeAmostra(texto, ASSETS.voiceSamples + "\n" + ASSETS.registroReal);
   if (copia) {
     return `lint: copiou trecho literal de amostra de voz ("${copia}") — amostra é régua de ritmo, não banco de frases; diga a MESMA coisa com frase nova`;
   }
@@ -372,11 +411,12 @@ async function julgarUm(
   contextoExtra?: string
 ): Promise<{ finalistas: Finalista[]; mortos: Morto[] }> {
   return runAgent<{ finalistas: Finalista[]; mortos: Morto[] }>({
-    agentPrompt: AGENTS.critico,
+    agentPrompt: await getPrompt("critico"),
     stableDocs: [
       { tag: "voice_model", content: ASSETS.voiceModel },
       { tag: "victor_profile", content: ASSETS.victorProfile },
       { tag: "algorithm_rules", content: ASSETS.algorithmRules },
+      { tag: "registro_real", content: await getPrompt("registroReal") },
     ],
     dynamicDocs: [
       { tag: "anchors", content: (run.insumos?.voiceAnchors ?? []).join("\n---\n") },
@@ -435,8 +475,9 @@ async function stageCritico(run: RunState): Promise<void> {
   // lints determinísticos ANTES do LLM (motivo sem "p0" → recuperável → regen)
   const lintMortos: Morto[] = [];
   const historico = run.insumos?.historico ?? [];
+  const dic = await loadDicionario();
   const drafts = todos.filter((d) => {
-    const motivo = lintDraft(d.texto, historico);
+    const motivo = lintDraft(d.texto, historico, dic);
     if (motivo) {
       lintMortos.push({ id: d.id, motivo });
       return false;
@@ -504,10 +545,12 @@ async function stageRegen(run: RunState): Promise<void> {
       const media = mediaItemOf(run, pauta);
       const seeds = sampleVoiceSeeds(ASSETS.voiceSamples, 4, `${run.id}-regen-${pauta.id}`);
       const out = await runAgent<{ texto: string; seed_descartada: string }>({
-        agentPrompt: AGENTS.ghostwriter,
+        agentPrompt: await getPrompt("ghostwriter"),
         stableDocs: [
           { tag: "voice_model", content: ASSETS.voiceModel },
-          { tag: "registro_acido", content: ASSETS.registroAcido },
+          { tag: "registro_acido", content: await getPrompt("registroAcido") },
+          { tag: "registro_real", content: await getPrompt("registroReal") },
+          { tag: "dicionario_de_voz", content: dicionarioDoc(await loadDicionario()) },
           { tag: "victor_profile", content: ASSETS.victorProfile },
         ],
         dynamicDocs: [
@@ -544,8 +587,9 @@ async function stageRegen(run: RunState): Promise<void> {
   // stageCritico (chamada pequena com retry invertido; sem lote gigante)
   const draftsComPauta = novos.map((d) => ({ id: d.pautaId, texto: d.texto, pauta: pautasById.get(d.pautaId) }));
   const historico = run.insumos?.historico ?? [];
+  const dicRegen = await loadDicionario();
   const lintados = draftsComPauta.filter((d) => {
-    const motivo = lintDraft(d.texto, historico);
+    const motivo = lintDraft(d.texto, historico, dicRegen);
     if (motivo) {
       run.mortos = [...(run.mortos ?? []), { id: d.id, motivo: `${motivo} (na reescrita)` }];
       return false;
@@ -583,7 +627,7 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
   });
 
   const result = await runAgent<{ selecionados: Selecionado[]; descartados: Morto[] }>({
-    agentPrompt: AGENTS.editor,
+    agentPrompt: await getPrompt("editor"),
     stableDocs: [{ tag: "linha_editorial", content: ASSETS.linhaEditorial }],
     dynamicDocs: [
       { tag: "finalistas", content: JSON.stringify(finalistasComPauta, null, 2) },
@@ -601,16 +645,29 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
   // (06/jul saíram "vi uma thread no r/sideproject" E "vi rolando no r/sideproject")
   const textoDe = (id: string) => (run.finalistas ?? []).find((f) => f.id === id)?.texto ?? "";
   const abertura = (t: string) => t.toLowerCase().split(/\s+/).slice(0, 2).join(" ");
+  const fingerprint = (t: string) => {
+    const n = t.split("\n").filter((l) => l.trim()).length;
+    const bucket = n <= 1 ? "1" : n === 2 ? "2" : n <= 5 ? "3-5" : "6+";
+    const fim = t.trim();
+    const fecho = /\.\.$/.test(fim) ? ".." : /\?$/.test(fim) ? "?" : /kk+\S*$/i.test(fim) ? "kk" : "seco";
+    return bucket + ":" + fecho;
+  };
   const canais = (t: string) => (t.toLowerCase().match(/r\/[a-z0-9_]+|hacker news|\bhn\b|product hunt/g) ?? []);
   const escolhidos: Selecionado[] = [];
   const vistosAbertura = new Set<string>();
   const vistosCanal = new Set<string>();
+  const vistosForma = new Set<string>();
   const citandoTotal = () => escolhidos.filter((e) => canais(textoDe(e.id)).length > 0).length;
   const clash = (t: string) =>
     vistosAbertura.has(abertura(t)) ||
+    vistosForma.has(fingerprint(t)) ||
     canais(t).some((c) => vistosCanal.has(c)) ||
     (canais(t).length > 0 && citandoTotal() >= 2);
-  const marca = (t: string) => { vistosAbertura.add(abertura(t)); for (const c of canais(t)) vistosCanal.add(c); };
+  const marca = (t: string) => {
+    vistosAbertura.add(abertura(t));
+    vistosForma.add(fingerprint(t));
+    for (const c of canais(t)) vistosCanal.add(c);
+  };
   const fila = [...result.selecionados];
   const reservas = (run.finalistas ?? [])
     .filter((f) => !fila.some((s) => s.id === f.id))
@@ -637,11 +694,13 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
     const piso: Selecionado[] = [];
     const vA = new Set<string>();
     const vC = new Set<string>();
+    const vF = new Set<string>();
     for (const f of [...(run.finalistas ?? [])].sort((a, b) => b.score - a.score)) {
       if (piso.length >= config.postsPerDay) break;
-      if (piso.length > 0 && (vA.has(abertura(f.texto)) || canais(f.texto).some((c) => vC.has(c)))) continue;
+      if (piso.length > 0 && (vA.has(abertura(f.texto)) || vF.has(fingerprint(f.texto)) || canais(f.texto).some((c) => vC.has(c)))) continue;
       piso.push({ id: f.id, rank: piso.length + 1, janela: piso.length === 0 ? "almoco" : "tarde", motivo: "piso: melhor finalista (editor havia zerado por dedup vs agenda)" });
       vA.add(abertura(f.texto));
+      vF.add(fingerprint(f.texto));
       for (const c of canais(f.texto)) vC.add(c);
     }
     run.selecionados = piso;

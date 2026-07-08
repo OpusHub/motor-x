@@ -17,6 +17,7 @@ inbox do Victor (material vivido) > facts_bank (fato dele com lastro) > trend (s
 - Pauta sem print: `inbox_media_id` = null.
 
 ## Variedade dura entre as pautas do dia
+- Toda pauta sai com o campo `forma` (F1 one-liner · F2 hot take 2 linhas · F3 fio falado · F4 operação com → · F5 pergunta de operador). ROTACIONE: nunca 2 pautas do dia com a mesma forma; todo dia tem pelo menos 1 pauta F1 ou F2. Forma é do POST, não do assunto — assunto denso pode virar one-liner.
 - No máximo UMA pauta do dia pode citar explicitamente o canal-fonte (r/sub, Hacker News, Product Hunt) no texto final. As outras usam a discussão como MATÉRIA-PRIMA sem citar de onde veio.
 - Os ângulos de abertura precisam ser distintos entre si: se uma pauta abre reagindo a algo que ele "viu", as outras abrem por outro caminho (número próprio, decisão do dia, take contrário direto, história).
 - Duas pautas do mesmo canal-fonte no mesmo dia = uma delas troca de fonte ou morre.

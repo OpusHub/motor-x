@@ -72,6 +72,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function runOpenRouter<T>(opts: {
   systemText: string;
   userText: string;
+  modelOverride?: string;
   schema: Record<string, unknown>;
   maxTokens: number;
   effort: "low" | "medium" | "high";
@@ -102,15 +103,15 @@ async function runOpenRouter<T>(opts: {
           "X-Title": "Motor X",
         },
         body: JSON.stringify({
-          model: attempt === 0 ? MODEL(opts.agent) : FALLBACK_MODEL,
+          model: attempt === 0 ? opts.modelOverride ?? MODEL(opts.agent) : FALLBACK_MODEL,
           // fallback oficial: se o primário falhar no provedor, o OpenRouter
           // troca na MESMA request. Na 2ª tentativa a ordem INVERTE — timeout
           // não é "falha de provedor", então sem isso a retry batia de novo
           // no mesmo modelo lento (visto na noite de 04/jul: kimi degradado).
           models:
             attempt === 0
-              ? Array.from(new Set([MODEL(opts.agent), FALLBACK_MODEL]))
-              : Array.from(new Set([FALLBACK_MODEL, MODEL(opts.agent)])),
+              ? Array.from(new Set([opts.modelOverride ?? MODEL(opts.agent), FALLBACK_MODEL]))
+              : Array.from(new Set([FALLBACK_MODEL, opts.modelOverride ?? MODEL(opts.agent)])),
           // só roteia pra provedores que suportam json_schema/reasoning
           provider: { require_parameters: true },
           max_tokens: opts.maxTokens,
@@ -239,6 +240,7 @@ export async function runAgent<T>(opts: {
   maxTokens?: number;
   timeoutMs?: number;
   agent?: AgentName;
+  modelOverride?: string; // força o primário desta chamada (ex: retry de pautas vazias no haiku)
 }): Promise<T> {
   if (process.env.MOCK_LLM === "1") {
     return mockResponse(opts.schema, opts.dynamicDocs) as T;
@@ -252,6 +254,7 @@ export async function runAgent<T>(opts: {
     return runOpenRouter<T>({
       systemText,
       userText,
+      modelOverride: opts.modelOverride,
       schema: opts.schema,
       maxTokens: opts.maxTokens ?? 16000,
       effort: opts.effort ?? "medium",

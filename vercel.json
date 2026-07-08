@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/daily",
-      "schedule": "57 8 * * *"
+      "schedule": "57 10 * * *"
     },
     {
       "path": "/api/cron/watchdog",

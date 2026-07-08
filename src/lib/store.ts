@@ -1,4 +1,4 @@
-import { put, list } from "@vercel/blob";
+import { del as blobDel, list, put } from "@vercel/blob";
 
 // Armazenamento JSON sobre Vercel Blob.
 // - Paths prefixados com BLOB_PATH_SECRET: o store é público, o segredo no path
@@ -68,4 +68,10 @@ export async function listJSON<T>(pathPrefix: string, limit = 100): Promise<{ pa
     })
   );
   return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+// Remove um JSON do store (ex: override de prompt restaurado pro padrão).
+export async function del(path: string): Promise<void> {
+  const found = await list({ prefix: prefix(path), limit: 1 });
+  if (found.blobs[0]) await blobDel(found.blobs[0].url);
 }

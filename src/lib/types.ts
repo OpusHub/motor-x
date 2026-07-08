@@ -24,6 +24,7 @@ export interface Pauta {
   idioma: Idioma;
   fato: Fato;
   angulo: string;
+  forma?: "F1" | "F2" | "F3" | "F4" | "F5"; // forma do post (registro-real) — rotacionada pelo pauteiro
   inbox_media_id?: string | null; // id do item do inbox cujo print sai anexado no post
 }
 
