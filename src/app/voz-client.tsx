@@ -29,6 +29,11 @@ export function VozSection({ showToast }: { showToast: (msg: string) => void }) 
   const [novaPreferida, setNovaPreferida] = useState("");
   const [novaNota, setNovaNota] = useState("");
 
+  const [fatos, setFatos] = useState<{ id: string; fato: string; fonte: string }[] | null>(null);
+  const [novoFato, setNovoFato] = useState("");
+  const [novaFonte, setNovaFonte] = useState("");
+  const [fatosBusy, setFatosBusy] = useState(false);
+
   const [prompts, setPrompts] = useState<PromptItem[]>([]);
   const [promptKey, setPromptKey] = useState<string>("");
   const [promptText, setPromptText] = useState("");
@@ -38,6 +43,7 @@ export function VozSection({ showToast }: { showToast: (msg: string) => void }) 
     void (async () => {
       try {
         setDic(await api<Dicionario>("/api/dicionario"));
+        setFatos((await api<{ facts: { id: string; fato: string; fonte: string }[] }>("/api/fatos")).facts);
         const p = await api<{ prompts: PromptItem[] }>("/api/prompts");
         setPrompts(p.prompts);
         if (p.prompts[0]) {
@@ -60,6 +66,19 @@ export function VozSection({ showToast }: { showToast: (msg: string) => void }) 
       showToast(`dicionário: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDicBusy(false);
+    }
+  }
+
+  async function salvarFatos(next: { id: string; fato: string; fonte: string }[]) {
+    setFatosBusy(true);
+    try {
+      await api("/api/fatos", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify({ facts: next }) });
+      setFatos(next);
+      showToast("fatos salvos ✓ (o pauteiro usa no próximo run)");
+    } catch (err) {
+      showToast(`fatos: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setFatosBusy(false);
     }
   }
 
@@ -104,9 +123,9 @@ export function VozSection({ showToast }: { showToast: (msg: string) => void }) 
     <section className="card">
       <details className="settings-details">
         <summary>
-          voz &amp; prompts
+          🎛 voz &amp; controle
           <span className="small muted" style={{ marginLeft: 8 }}>
-            dicionário de palavras + prompts dos agentes, editáveis
+            dicionário de palavras · fatos (combustível) · prompts dos agentes — tudo editável, vale no próximo run
           </span>
         </summary>
 
@@ -210,6 +229,57 @@ export function VozSection({ showToast }: { showToast: (msg: string) => void }) 
         ) : (
           <p className="empty">carregando dicionário...</p>
         )}
+
+        <div className="setting-row setting-range">
+          <span className="setting-label">
+            fatos reais (combustível do pauteiro)
+            <span className="small muted">número/decisão/história SUA — post bom nasce daqui; sem fato, o motor só tem opinião</span>
+          </span>
+          {(fatos ?? []).map((f, i) => (
+            <div key={f.id} className="btn-row" style={{ marginTop: 6, alignItems: "center", gap: 8 }}>
+              <span className="small" style={{ flex: 1 }}>
+                {f.fato} <span className="muted">({f.fonte})</span>
+              </span>
+              <button
+                className="btn btn-sm"
+                disabled={fatosBusy}
+                onClick={() => void salvarFatos((fatos ?? []).filter((_, j) => j !== i))}
+              >
+                remover
+              </button>
+            </div>
+          ))}
+          <div className="btn-row" style={{ marginTop: 10 }}>
+            <input
+              className="input"
+              style={{ flex: 3, minWidth: 160 }}
+              placeholder='fato real (ex: "paywall novo do SkinUp converteu 2x no teste A/B de julho")'
+              value={novoFato}
+              onChange={(e) => setNovoFato(e.target.value)}
+            />
+            <input
+              className="input"
+              style={{ flex: 1, minWidth: 90 }}
+              placeholder="fonte (opcional)"
+              value={novaFonte}
+              onChange={(e) => setNovaFonte(e.target.value)}
+            />
+            <button
+              className="btn btn-sm"
+              disabled={fatosBusy || !novoFato.trim()}
+              onClick={() => {
+                void salvarFatos([
+                  ...(fatos ?? []),
+                  { id: `f${Date.now().toString(36)}`, fato: novoFato.trim(), fonte: novaFonte.trim() || "Victor (painel)" },
+                ]);
+                setNovoFato("");
+                setNovaFonte("");
+              }}
+            >
+              adicionar
+            </button>
+          </div>
+        </div>
 
         <div className="setting-row setting-range">
           <span className="setting-label">

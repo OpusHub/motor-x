@@ -6,7 +6,7 @@ import type { AppConfig, InboxItem, RunStage, ScheduledPost } from "@/lib/types"
 
 // ---------- tipos da API ----------
 
-type StoredPost = ScheduledPost & { score?: number };
+type StoredPost = ScheduledPost & { score?: number; feedback?: "gostei" | "nao_sou_eu" };
 
 interface RunInfo {
   id: string;
@@ -256,6 +256,24 @@ export default function DashboardClient() {
       showToast(`editar: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setEditBusy(false);
+    }
+  }
+
+  async function feedbackPost(post: StoredPost, veredito: "gostei" | "nao_sou_eu") {
+    try {
+      await api("/api/feedback", {
+        method: "POST",
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ date, pautaId: post.pautaId, veredito }),
+      });
+      setData((cur) =>
+        cur
+          ? { ...cur, posts: cur.posts.map((p) => (p.pautaId === post.pautaId ? { ...p, feedback: veredito } : p)) }
+          : cur
+      );
+      showToast(veredito === "gostei" ? "👍 registrado — o motor aprende esse padrão" : "👎 registrado — o motor evita esse jeito");
+    } catch (err) {
+      showToast(`feedback: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -617,6 +635,22 @@ export default function DashboardClient() {
                           onClick={() => void killPost(post)}
                         >
                           matar
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={post.feedback === "gostei" ? { opacity: 1 } : { opacity: 0.6 }}
+                          title="isso sou eu — o motor aprende esse padrão"
+                          onClick={() => void feedbackPost(post, "gostei")}
+                        >
+                          {post.feedback === "gostei" ? "👍 aprendido" : "👍 sou eu"}
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={post.feedback === "nao_sou_eu" ? { opacity: 1 } : { opacity: 0.6 }}
+                          title="não soa como eu — vira veto de padrão"
+                          onClick={() => void feedbackPost(post, "nao_sou_eu")}
+                        >
+                          {post.feedback === "nao_sou_eu" ? "👎 vetado" : "👎 não sou eu"}
                         </button>
                       </div>
                     )}
