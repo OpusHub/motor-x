@@ -150,6 +150,11 @@ async function stageGather(run: RunState): Promise<void> {
       trendsFonte = `cache-${cache.date}`;
     }
   }
+  // HN/PH seguram a mesma story por dias e o pauteiro recicla tema (cadence 2
+  // dias, browser 4 dias) — trend que quase-iguala post já publicado morre aqui
+  const antes = trends.length;
+  trends = trends.filter((t) => !historico.some((h) => quaseIgual(t.texto, h)));
+  if (trends.length < antes) run.log.push(`gather: ${antes - trends.length} trend(s) filtrado(s) por repetir tema já publicado`);
   if (trends.length === 0) trendsFonte = "nenhuma";
 
   const voiceAnchors =
