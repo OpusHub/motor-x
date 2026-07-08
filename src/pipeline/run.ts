@@ -2,6 +2,7 @@ import { ASSETS } from "@/prompts/bundle";
 import { getPrompt } from "@/lib/overrides";
 import { Dicionario, dicionarioDoc, loadDicionario, violacaoDicionario } from "@/lib/dicionario";
 import { describeImage, runAgent, sampleVoiceSeeds } from "@/lib/claude";
+import { driveSyncSafe } from "@/lib/drive";
 import { loadConfig } from "@/lib/config";
 import { getJSON, listJSON, putJSON } from "@/lib/store";
 import { notify, readInbox } from "@/lib/telegram";
@@ -74,6 +75,12 @@ function recentDates(days: number, from: string): string[] {
 }
 
 async function stageGather(run: RunState): Promise<void> {
+  // 0. puxa transcripts novos da pasta do Drive (dailies) pro inbox de hoje.
+  //    Roda ANTES da leitura do inbox pra o material [DAILY] entrar neste run;
+  //    driveSyncSafe nunca lança (Drive fora do ar não derruba o dia)
+  const drive = await driveSyncSafe(run.date);
+  if (drive.novos > 0) run.log.push(`drive: ${drive.novos} transcript(s) de daily no inbox (${drive.nomes.join(", ")})`);
+
   // 1. drena o Telegram e persiste no inbox durável do dia ANTES de montar os
   //    insumos — retry do run não perde braindump (o getUpdates é destrutivo)
   const telegramTexts = await readInbox();

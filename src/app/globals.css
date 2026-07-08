@@ -60,6 +60,12 @@ textarea {
   gap: 14px;
 }
 
+@media (min-width: 781px) {
+  /* com sidebar, a coluna de 640px afogava o conteúdo: alarga o cockpit */
+  .shell { max-width: 1040px; }
+  .content { max-width: 720px; }
+}
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(14px); }
   to { opacity: 1; transform: none; }
@@ -697,4 +703,227 @@ input[type="range"] {
     -webkit-overflow-scrolling: touch;
   }
   .nav-item { flex-shrink: 0; padding: 8px 12px; }
+}
+
+/* ===== tapa de UX v2 (08/jul): chips, trilho do pipeline, forms ===== */
+
+/* --- dicionário: grid de chips com switch --- */
+.chip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.term-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--card-edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  transition: border-color 0.15s ease, opacity 0.2s ease;
+}
+.term-chip:hover { border-color: var(--card-edge-hot); }
+.term-chip.off { opacity: 0.45; }
+.term-chip .term-main { flex: 1; min-width: 0; }
+.term-chip code {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12.5px;
+  color: var(--ink);
+  word-break: break-all;
+  display: block;
+}
+.term-chip .term-note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  line-height: 1.4;
+  margin-top: 2px;
+  display: block;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.term-chip .switch { width: 42px; height: 24px; }
+.term-chip .switch::after { width: 18px; height: 18px; }
+.term-chip .switch:checked::after { transform: translateX(18px); }
+.chip-x {
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 15px;
+  cursor: pointer;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.chip-x:hover { color: var(--red); background: rgba(255, 98, 89, 0.08); }
+
+/* --- forms de adição: empilham bonito --- */
+.form-add {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--card-edge);
+}
+.form-add-row { display: flex; gap: 8px; }
+.form-add-row > .input { flex: 1; min-width: 0; }
+@media (max-width: 560px) {
+  .form-add-row { flex-direction: column; }
+  .form-add-row > .btn { width: 100%; }
+}
+
+/* --- pipeline: trilho com nós numerados --- */
+.pipe { position: relative; display: flex; flex-direction: column; gap: 0; }
+.pipe-step {
+  position: relative;
+  padding: 0 0 18px 44px;
+}
+.pipe-step::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 30px;
+  bottom: -4px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--card-edge-hot), var(--card-edge));
+}
+.pipe-step:last-child::before { display: none; }
+.pipe-node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-raise);
+  border: 1px solid var(--card-edge-hot);
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--phos);
+  box-shadow: 0 0 14px rgba(70, 242, 154, 0.12);
+}
+.pipe-card {
+  background: var(--bg-raise);
+  border: 1px solid var(--card-edge);
+  border-radius: 12px;
+  padding: 14px;
+}
+.pipe-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pipe-name {
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--ink);
+}
+.pipe-model {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  border: 1px solid var(--card-edge);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.pipe-desc { font-size: 13px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
+.prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--card-edge);
+  border-radius: 10px;
+}
+.prompt-row .prompt-name { flex: 1; font-size: 13px; min-width: 0; }
+.prompt-editor {
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bg);
+  border: 1px solid var(--phos-dim);
+  border-radius: 10px;
+  padding: 14px;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 340px;
+  resize: vertical;
+  box-shadow: 0 0 0 3px var(--phos-ghost);
+}
+
+/* --- fatos: cards de citação --- */
+.fato-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--card-edge);
+  border-left: 3px solid var(--phos-dim);
+  border-radius: 10px;
+  padding: 11px 12px;
+  margin-top: 8px;
+}
+.fato-item .fato-txt { flex: 1; font-size: 14px; line-height: 1.5; }
+.fato-item .fato-fonte {
+  display: block;
+  font-family: var(--font-mono, ui-monospace);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  margin-top: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* --- ações do post: principais à esquerda, julgamento à direita --- */
+.post-actions { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+.post-actions .spacer { flex: 1; }
+.judge-btn {
+  min-height: 38px;
+  padding: 7px 12px;
+  font-size: 13px;
+  border-radius: 10px;
+  border: 1px solid var(--card-edge);
+  background: transparent;
+  color: var(--ink-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.judge-btn.on-good { border-color: rgba(70, 242, 154, 0.5); color: var(--phos); background: var(--phos-ghost); }
+.judge-btn.on-bad { border-color: rgba(255, 98, 89, 0.5); color: var(--red); background: rgba(255, 98, 89, 0.07); }
+
+/* --- combustível: cabeçalho de card com ícone + hint --- */
+.fuel-hint {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  line-height: 1.55;
+  margin: -4px 0 12px;
+}
+.drive-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--card-edge-hot);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  flex-wrap: wrap;
 }

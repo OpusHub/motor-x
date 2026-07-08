@@ -660,17 +660,16 @@ export default function DashboardClient() {
                         >
                           matar
                         </button>
+                        <span className="spacer" />
                         <button
-                          className="btn btn-sm"
-                          style={post.feedback === "gostei" ? { opacity: 1 } : { opacity: 0.6 }}
+                          className={`judge-btn ${post.feedback === "gostei" ? "on-good" : ""}`}
                           title="isso sou eu — o motor aprende esse padrão"
                           onClick={() => void feedbackPost(post, "gostei")}
                         >
                           {post.feedback === "gostei" ? "👍 aprendido" : "👍 sou eu"}
                         </button>
                         <button
-                          className="btn btn-sm"
-                          style={post.feedback === "nao_sou_eu" ? { opacity: 1 } : { opacity: 0.6 }}
+                          className={`judge-btn ${post.feedback === "nao_sou_eu" ? "on-bad" : ""}`}
                           title="não soa como eu — vira veto de padrão"
                           onClick={() => void feedbackPost(post, "nao_sou_eu")}
                         >
