@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { isDashboardAuthed } from "@/lib/auth";
+import { isCronAuthed, isDashboardAuthed } from "@/lib/auth";
 import { getJSON, putBinary, putJSON } from "@/lib/store";
 import { InboxItem } from "@/lib/types";
 import { todayBRT } from "@/pipeline/schedule";
@@ -25,7 +25,8 @@ function normalize(raw: (string | InboxItem)[]): InboxItem[] {
 // Print + contexto vira pauta prioritária: o modelo lê a imagem no gather e o
 // post sai com ela anexada.
 export async function POST(req: NextRequest) {
-  if (!isDashboardAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  // automações externas (ex: Make vigiando a pasta do Drive das dailies) entram com x-run-secret
+  if (!isDashboardAuthed(req) && !isCronAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let texto = "";
   let mediaUrl: string | undefined;

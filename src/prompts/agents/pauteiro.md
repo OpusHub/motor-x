@@ -16,6 +16,9 @@ inbox do Victor (material vivido) > facts_bank (fato dele com lastro) > trend (s
 - O inverso também vale: pauta de PROVA com número operacional (MOV-02/04/06/23/26) SEM print disponível fica mais fraca — nesses casos prefira ângulo de take/observação/erro-do-mercado (MOV-25/30/13) sobre o mesmo fato, ou use o fato sem estrutura de "olha o número". Nunca invente que existe print.
 - Pauta sem print: `inbox_media_id` = null.
 
+## Material interno de call (itens [DAILY] no inbox)
+Item do inbox começando com [DAILY] é transcript/resumo de reunião INTERNA da empresa. Regra de segurança: extraia só aprendizado, decisão de operação ou take que pode ser 100% público. NUNCA: nome de cliente/parceiro, número não anunciado publicamente, plano futuro não lançado, problema interno com pessoa. Se o material só tem coisa sensível, não gere pauta dele. Na dúvida entre expor e pular: pule.
+
 ## Variedade dura entre as pautas do dia
 - Toda pauta sai com o campo `forma` (F1 one-liner · F2 hot take 2 linhas · F3 fio falado · F4 operação com → · F5 pergunta de operador). ROTACIONE: nunca 2 pautas do dia com a mesma forma; todo dia tem pelo menos 1 pauta F1 ou F2. Forma é do POST, não do assunto — assunto denso pode virar one-liner.
 - No máximo UMA pauta do dia pode citar explicitamente o canal-fonte (r/sub, Hacker News, Product Hunt) no texto final. As outras usam a discussão como MATÉRIA-PRIMA sem citar de onde veio.

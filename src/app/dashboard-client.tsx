@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { VozSection } from "./voz-client";
+import { AgentesView, DicionarioView, FatosBlock } from "./voz-client";
 import type { AppConfig, InboxItem, RunStage, ScheduledPost } from "@/lib/types";
 
 // ---------- tipos da API ----------
@@ -111,6 +111,7 @@ const STATUS_BADGE: Record<StoredPost["status"], { label: string; cls: string }>
 // ---------- componente ----------
 
 export default function DashboardClient() {
+  const [view, setView] = useState<"posts" | "combustivel" | "dicionario" | "agentes" | "config">("posts");
   const [date, setDate] = useState<string>(() => brtToday());
   const [status, setStatus] = useState<StatusData | null>(null);
   const [data, setData] = useState<PostsData | null>(null);
@@ -449,6 +450,26 @@ export default function DashboardClient() {
         </div>
       </header>
 
+      <div className="layout">
+        <nav className="sidebar">
+          {(
+            [
+              ["posts", "📅", "posts do dia"],
+              ["combustivel", "🧠", "combustível"],
+              ["dicionario", "📖", "dicionário"],
+              ["agentes", "🤖", "agentes"],
+              ["config", "⚙️", "config"],
+            ] as const
+          ).map(([id, emoji, label]) => (
+            <button key={id} className={`nav-item ${view === id ? "active" : ""}`} onClick={() => setView(id)}>
+              <span className="nav-emoji">{emoji}</span>
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="content">
+      {view === "config" && (<>
       {/* CONTAS */}
       <section className="card">
         <div className="section-title">contas</div>
@@ -480,6 +501,9 @@ export default function DashboardClient() {
         </div>
       </section>
 
+      </>)}
+
+      {view === "posts" && (<>
       {/* RUN DO DIA */}
       <section className="card">
         <div className="section-title">run do dia</div>
@@ -662,6 +686,9 @@ export default function DashboardClient() {
         </div>
       </section>
 
+      </>)}
+
+      {view === "combustivel" && (<>
       {/* INBOX */}
       <section className="card">
         <div className="section-title">inbox</div>
@@ -710,6 +737,10 @@ export default function DashboardClient() {
         )}
       </section>
 
+      <FatosBlock showToast={showToast} />
+      </>)}
+
+      {view === "config" && (<>
       {/* AJUSTES */}
       <section className="card">
         <details className="settings-details">
@@ -839,7 +870,12 @@ export default function DashboardClient() {
         </details>
       </section>
 
-      <VozSection showToast={showToast} />
+      </>)}
+
+      {view === "dicionario" && <DicionarioView showToast={showToast} />}
+      {view === "agentes" && <AgentesView showToast={showToast} />}
+        </div>
+      </div>
 
       {toast && <div className="toast">{toast}</div>}
     </main>
