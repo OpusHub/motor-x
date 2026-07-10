@@ -11,6 +11,7 @@ import { rssTrends } from "@/lib/rss";
 import { redditSignal } from "@/lib/sources/reddit";
 import { hnSignal } from "@/lib/sources/hackernews";
 import { productHuntSignal } from "@/lib/sources/producthunt";
+import { nicheChatter, scrapeCreatorsEnabled } from "@/lib/sources/scrapecreators";
 import { createPost, personalAccounts, ZernioError } from "@/lib/zernio";
 import {
   AppConfig,
@@ -132,22 +133,41 @@ async function stageGather(run: RunState): Promise<void> {
   const dynamicFacts = ((await getJSON<{ facts: { id: string; fato: string; fonte: string; aprovado?: boolean }[] }>("facts.json"))?.facts ?? [])
     .filter((f) => f.aprovado !== false);
 
+  // COOLDOWN de fato (anti-concentração, o medo do "só falar de LGPD"): fato cujo
+  // tema já saiu nos últimos 3 dias sai da vez — MAS só aplica se sobrarem >= 4
+  // fatos frescos, senão mantém tudo (nunca esvazia o tanque a ponto de faltar
+  // pauta). Reusa o quaseIgual (semântico) contra os posts recentes.
+  const dias3 = new Set(recentDates(3, run.date));
+  const posts3d = todosPosts
+    .filter((pp) => dias3.has(pp.path.split("/")[1] ?? ""))
+    .map((pp) => pp.data)
+    .filter((pp) => pp.texto && pp.status !== "killed" && pp.status !== "failed")
+    .map((pp) => pp.texto);
+  const todosFatos = [...factsBank.facts, ...dynamicFacts];
+  const frescos = todosFatos.filter((f) => !posts3d.some((h) => quaseIgual(f.fato, h)));
+  const emCooldown = todosFatos.length - frescos.length;
+  const fatosUsar = frescos.length >= 4 ? frescos : todosFatos;
+  if (emCooldown > 0 && frescos.length >= 4) run.log.push(`gather: ${emCooldown} fato(s) em cooldown (tema saiu nos últimos 3d)`);
+
   // fonte externa: X (se twitterapi tiver crédito) → mix grátis Reddit + HN +
   // Product Hunt (3 hosts independentes: um cair não zera o dia) → RSS genérico
   let trends = twitterTrends;
   let trendsFonte = "x";
   if (trends.length === 0) {
-    const [reddit, hn, ph] = await Promise.all([
+    const [nicho, reddit, hn, ph] = await Promise.all([
+      nicheChatter(6), // posts frescos das contas que o Victor modela (só com API key do ScrapeCreators)
       redditSignal(4, run.date),
       hnSignal(4),
       productHuntSignal(2),
     ]);
     const mix: typeof trends = [];
-    for (let i = 0; i < 4; i++) {
-      for (const list of [reddit, hn, ph]) if (list[i]) mix.push(list[i]);
+    // nicho (comentar o que as contas-referência postam) tem prioridade: âncora
+    // externa fresca, muda todo dia = o melhor antídoto contra repetição
+    for (let i = 0; i < 6; i++) {
+      for (const list of [nicho, reddit, hn, ph]) if (list[i]) mix.push(list[i]);
     }
     trends = mix.slice(0, 10);
-    trendsFonte = `reddit${reddit.length}+hn${hn.length}+ph${ph.length}`;
+    trendsFonte = `${scrapeCreatorsEnabled() ? `nicho${nicho.length}+` : ""}reddit${reddit.length}+hn${hn.length}+ph${ph.length}`;
   }
   if (trends.length === 0) {
     trends = await rssTrends(6);
@@ -180,7 +200,7 @@ async function stageGather(run: RunState): Promise<void> {
   const insumos: GatherResult = {
     inbox,
     trends,
-    facts: [...factsBank.facts, ...dynamicFacts],
+    facts: fatosUsar,
     historico,
     voiceAnchors,
     lessons,

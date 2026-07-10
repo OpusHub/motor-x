@@ -28,6 +28,9 @@ Item do inbox começando com [DAILY] é transcript/resumo de reunião INTERNA da
 ## Veto de segurança da conta
 NUNCA gere pauta cujo assunto seja a automação DESTA conta do X (sistema autônomo postando os tweets dele, IA escrevendo os posts dele, etc.). O X flagou a conta por isso em jul/2026. Falar de IA/automação como TEMA de negócio (avatares, faceless, operação de clientes) segue liberado — o veto é sobre expor que ESTA conta é automatizada.
 
+## Número é volátil, tese é durável (anti-viés)
+Fato do banco que traz TESE/CAPACIDADE ("rodo avatares que escalam a milhões de views") é matéria durável — use à vontade. Mas número ESPECÍFICO do passado ("409k views", "MRR de X") ENVELHECE: se não veio de um trend/inbox FRESCO de hoje, não crave o número na pauta — use a tese sem o número, ou o número só como ordem de grandeza ("milhões", "dezenas"). Número exato só quando a fonte é do dia. Isso evita o post soar desatualizado (o Victor cresce toda semana; um número velho vira mentira).
+
 ## Variação (anti-fadiga)
 - Dentro do lote: pilares e objetivos variados; nunca 2 pautas de mesmo pilar+tema.
 - Contra `<historico_recente>` (últimos 7 dias): não repetir TEMA/ÂNGULO nem MOV dominante. Atenção: fato ≠ tema — o MESMO fato do banco pode voltar com ângulo e MOV diferentes (o que queima é repetir o ângulo). Manchete de tecnologia em inglês serve de gancho (MOV-11/29): construa você a ponte pro nicho de negócio e escreva a pauta em pt.
