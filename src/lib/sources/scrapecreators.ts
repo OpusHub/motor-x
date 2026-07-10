@@ -26,14 +26,21 @@ export function scrapeCreatorsEnabled(): boolean {
   return !!KEY();
 }
 
-interface XPost {
-  text?: string;
-  full_text?: string;
-  favorite_count?: number;
-  retweet_count?: number;
-  view_count?: number;
-  bookmark_count?: number;
-  created_at?: string;
+// formato real do X GraphQL que o ScrapeCreators repassa: texto e métricas
+// ficam em tweet.legacy.*, views em tweet.views.count
+interface XTweet {
+  legacy?: {
+    full_text?: string;
+    favorite_count?: number;
+    retweet_count?: number;
+    reply_count?: number;
+    bookmark_count?: number;
+    created_at?: string;
+    lang?: string;
+    in_reply_to_status_id_str?: string;
+    retweeted_status_result?: unknown;
+  };
+  views?: { count?: string | number };
   url?: string;
 }
 
@@ -44,7 +51,7 @@ async function fetchJSON<T>(path: string): Promise<T | null> {
     const res = await fetch(`${BASE}${path}`, {
       headers: { "x-api-key": key },
       cache: "no-store",
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) return null;
     return (await res.json()) as T;
@@ -54,18 +61,29 @@ async function fetchJSON<T>(path: string): Promise<T | null> {
 }
 
 // posts recentes das contas-referência → matéria pra COMENTAR (o take do Victor
-// reagindo ao que o nicho dele está discutindo hoje). Prioriza os com tração.
+// reagindo ao que o nicho dele está discutindo hoje). Só posts ORIGINAIS (sem
+// reply/RT), priorizando os com tração.
 export async function nicheChatter(limit = 6): Promise<TrendItem[]> {
   if (!KEY()) return [];
   const contas = contasAlvo();
   const porConta = await Promise.all(
     contas.map(async (handle) => {
-      const data = await fetchJSON<{ tweets?: XPost[] }>(`/twitter/user-tweets?handle=${encodeURIComponent(handle)}`);
-      const tweets = data?.tweets ?? [];
-      // só posts recentes (72h) com alguma tração — não replies/ruído
+      const data = await fetchJSON<{ tweets?: XTweet[] }>(`/twitter/user-tweets?handle=${encodeURIComponent(handle)}`);
+      const tweets = (data?.tweets ?? []).filter((t) => {
+        const lg = t.legacy;
+        const txt = lg?.full_text ?? "";
+        return (
+          txt.length > 40 &&
+          !lg?.in_reply_to_status_id_str && // não é reply
+          !lg?.retweeted_status_result && // não é RT
+          !txt.startsWith("RT @")
+        );
+      });
+      // ordena por views (os mais fortes primeiro), pega os 2 melhores por conta
+      const views = (t: XTweet) => Number(t.views?.count ?? 0);
       return tweets
-        .filter((t) => (t.text ?? t.full_text ?? "").length > 40)
-        .slice(0, 3)
+        .sort((a, b) => views(b) - views(a))
+        .slice(0, 2)
         .map((t) => ({ handle, t }));
     })
   );
@@ -76,8 +94,10 @@ export async function nicheChatter(limit = 6): Promise<TrendItem[]> {
     for (const lista of porConta) {
       const item = lista[i];
       if (item) {
-        const txt = (item.t.text ?? item.t.full_text ?? "").slice(0, 260);
-        const eng = item.t.view_count ? `${item.t.view_count} views` : `${item.t.favorite_count ?? 0} likes`;
+        const lg = item.t.legacy;
+        const txt = (lg?.full_text ?? "").replace(/https:\/\/t\.co\/\w+/g, "").trim().slice(0, 260);
+        const v = Number(item.t.views?.count ?? 0);
+        const eng = v > 0 ? `${v.toLocaleString("pt-BR")} views` : `${lg?.favorite_count ?? 0} likes`;
         out.push({
           texto: txt,
           autor: `@${item.handle}`,
@@ -93,12 +113,15 @@ export async function nicheChatter(limit = 6): Promise<TrendItem[]> {
   return out;
 }
 
+interface XProfile {
+  legacy?: { followers_count?: number; statuses_count?: number; media_count?: number };
+  core?: { name?: string; screen_name?: string };
+}
+
 // métrica FRESCA de uma conta do Victor (ex: avatar) — pro banco nunca cravar
 // número que envelhece. Retorna null se sem key ou conta não achada.
-export async function contaMetrica(handle: string): Promise<{ followers?: number; totalViews?: number } | null> {
-  const data = await fetchJSON<{ followers_count?: number; total_views?: number }>(
-    `/twitter/profile?handle=${encodeURIComponent(handle.replace(/^@/, ""))}`
-  );
-  if (!data) return null;
-  return { followers: data.followers_count, totalViews: data.total_views };
+export async function contaMetrica(handle: string): Promise<{ followers?: number; posts?: number } | null> {
+  const data = await fetchJSON<XProfile>(`/twitter/profile?handle=${encodeURIComponent(handle.replace(/^@/, ""))}`);
+  if (!data?.legacy) return null;
+  return { followers: data.legacy.followers_count, posts: data.legacy.statuses_count };
 }
