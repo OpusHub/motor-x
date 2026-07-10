@@ -13,6 +13,10 @@ import { TrendItem } from "../types";
 const KEY = () => process.env.SCRAPECREATORS_API_KEY;
 const BASE = "https://api.scrapecreators.com/v1";
 
+// sinal de que o post é sobre o nicho do Victor (negócio/build/IA/distribuição)
+// e não sobre assunto genérico da conta (levelsio posta Apple Maps, Dubai...)
+const NEGOCIO = /\b(build|ship|launch|shipp|revenue|mrr|arr|saas|startup|founder|indie|product|grow|market|churn|pricing|paywall|users?|customer|scale|hire|team|distribut|funnel|\bads?\b|agent|\bai\b|llm|gpt|monetiz|bootstrap|solopreneur|acquir|audience|content|creator|conversion|retention|onboard|feature|mvp|niche|profit|sell|sold|business)\b/i;
+
 // contas-referência do nicho do Victor (founders/indie/SaaS que ele modela).
 // Editável por env SCRAPECREATORS_ACCOUNTS (csv) sem deploy.
 const CONTAS_PADRAO = ["condzxyz", "levelsio", "gregisenberg", "arvidkahl", "dvassallo", "marclou"];
@@ -71,12 +75,15 @@ export async function nicheChatter(limit = 6): Promise<TrendItem[]> {
       const data = await fetchJSON<{ tweets?: XTweet[] }>(`/twitter/user-tweets?handle=${encodeURIComponent(handle)}`);
       const tweets = (data?.tweets ?? []).filter((t) => {
         const lg = t.legacy;
-        const txt = lg?.full_text ?? "";
+        const txt = (lg?.full_text ?? "").toLowerCase();
+        // só posts ORIGINAIS e sobre NEGÓCIO/build/founder — sem esse filtro
+        // vinha Apple Maps / solar farm de Dubai e o pauteiro ignorava o ruído
         return (
           txt.length > 40 &&
-          !lg?.in_reply_to_status_id_str && // não é reply
-          !lg?.retweeted_status_result && // não é RT
-          !txt.startsWith("RT @")
+          !lg?.in_reply_to_status_id_str &&
+          !lg?.retweeted_status_result &&
+          !txt.startsWith("rt @") &&
+          NEGOCIO.test(txt)
         );
       });
       // ordena por views (os mais fortes primeiro), pega os 2 melhores por conta
