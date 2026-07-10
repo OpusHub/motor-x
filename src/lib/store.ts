@@ -5,10 +5,33 @@ import { del as blobDel, list, put } from "@vercel/blob";
 //   impede leitura por URL adivinhável.
 // - Leituras com cache-bust (query única): o edge cache do Blob segura conteúdo
 //   stale por ~60s, o que quebraria o handoff da chain (ler o run recém-salvo).
+// - getJSON/existsPath usam URL DETERMINÍSTICA (sem list()): o Blob do Vercel
+//   serve qualquer path conhecido em https://<storeId>.public.blob.vercel-storage.com/<path>
+//   com addRandomSuffix:false. list()/del() contam como "Advanced Operation"
+//   (cota de 2.000/mês no Hobby) — em 10/jul o motor estourou 2.051 porque
+//   getJSON fazia list() em TODA leitura (config, lições, prompts, cada
+//   chamada). Ler por URL é 1 fetch HTTP comum: zero custo de cota.
 
 function prefix(path: string): string {
   const secret = process.env.BLOB_PATH_SECRET;
   return secret ? `${secret}/${path}` : path;
+}
+
+let cachedStoreId: string | null | undefined;
+
+// extrai o id do store do próprio token (formato vercel_blob_rw_<storeId>_<random>)
+// — evita 1 chamada de rede só pra descobrir o host do CDN.
+function storeId(): string | null {
+  if (cachedStoreId !== undefined) return cachedStoreId;
+  const token = process.env.BLOB_READ_WRITE_TOKEN ?? "";
+  const match = token.match(/^vercel_blob_rw_([a-zA-Z0-9]+)_/);
+  cachedStoreId = match ? match[1] : null;
+  return cachedStoreId;
+}
+
+function deterministicUrl(path: string): string | null {
+  const id = storeId();
+  return id ? `https://${id}.public.blob.vercel-storage.com/${prefix(path)}` : null;
 }
 
 // Upload binário (imagens do inbox). Retorna a URL pública — a Zernio baixa
@@ -43,6 +66,13 @@ async function fetchFresh<T>(url: string): Promise<T | null> {
 }
 
 export async function getJSON<T>(path: string): Promise<T | null> {
+  const direct = deterministicUrl(path);
+  if (direct) {
+    const data = await fetchFresh<T>(direct);
+    if (data !== null) return data;
+    // path pode não existir (404 tratado acima) OU o token não bate o padrão
+    // esperado — list() é o fallback correto, não o caminho comum
+  }
   const full = prefix(path);
   const { blobs } = await list({ prefix: full, limit: 1 });
   const blob = blobs.find((b) => b.pathname === full);
@@ -50,6 +80,9 @@ export async function getJSON<T>(path: string): Promise<T | null> {
   return fetchFresh<T>(blob.url);
 }
 
+// Continua usando list() de propósito: listar um DIRETÓRIO (múltiplos arquivos
+// desconhecidos) não tem como virar URL determinística. Usar com moderação —
+// isto SIM consome a cota de Advanced Operations.
 export async function listJSON<T>(pathPrefix: string, limit = 100): Promise<{ path: string; data: T }[]> {
   const secret = process.env.BLOB_PATH_SECRET;
   const { blobs } = await list({ prefix: prefix(pathPrefix), limit });

@@ -107,15 +107,20 @@ async function stageGather(run: RunState): Promise<void> {
   }
   if (inboxDirty) await putJSON(inboxPath, inbox);
 
-  const [twitterTrends, anchors, lessonsBlob, ...postsByDay] = await Promise.all([
+  // 1 list() cobrindo todos os dias em vez de 7 (1/dia): list() é "Advanced
+  // Operation" no Blob (cota de 2.000/mês no Hobby — estourou em 10/jul com
+  // esse padrão). Custo por CHAMADA, não por item, então listar o prefixo
+  // largo e filtrar em memória é bem mais barato que 1 chamada por dia.
+  const janela = new Set(recentDates(7, run.date));
+  const [twitterTrends, anchors, lessonsBlob, todosPosts] = await Promise.all([
     nicheTrends(6),
     victorRecentTweets(6),
     getJSON<{ lessons: { d: string; t: string }[] }>("lessons.json"),
-    ...recentDates(7, run.date).map((d) => listJSON<ScheduledPost & { texto: string }>(`posts/${d}/`, 20)),
+    listJSON<ScheduledPost & { texto: string }>(`posts/`, 500),
   ]);
 
-  const historico = postsByDay
-    .flat()
+  const historico = todosPosts
+    .filter((p) => janela.has(p.path.split("/")[1] ?? ""))
     .map((p) => p.data)
     .filter((p) => p.texto && p.status !== "killed" && p.status !== "failed")
     .map((p) => p.texto)
