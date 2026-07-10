@@ -127,7 +127,10 @@ async function stageGather(run: RunState): Promise<void> {
     .slice(-30);
 
   const factsBank = JSON.parse(ASSETS.factsBank) as { facts: { id: string; fato: string; fonte: string }[] };
-  const dynamicFacts = (await getJSON<{ facts: { id: string; fato: string; fonte: string }[] }>("facts.json"))?.facts ?? [];
+  // só fatos APROVADOS entram no tanque — candidatos pendentes (aprovado:false)
+  // ficam na fila esperando o carimbo do Victor no painel (trava anti-número-falso)
+  const dynamicFacts = ((await getJSON<{ facts: { id: string; fato: string; fonte: string; aprovado?: boolean }[] }>("facts.json"))?.facts ?? [])
+    .filter((f) => f.aprovado !== false);
 
   // fonte externa: X (se twitterapi tiver crédito) → mix grátis Reddit + HN +
   // Product Hunt (3 hosts independentes: um cair não zera o dia) → RSS genérico
@@ -377,10 +380,20 @@ function stems(texto: string): Set<string> {
 function quaseIgual(a: string, b: string): boolean {
   const sa = stems(a);
   const sb = stems(b);
-  if (sa.size < 6 || sb.size < 6) return false;
+  const menor = Math.min(sa.size, sb.size);
+  if (menor < 3) return false; // curto demais pra comparar com sentido
   let inter = 0;
   for (const w of sa) if (sb.has(w)) inter++;
-  return inter / (sa.size + sb.size - inter) > 0.42;
+  // BUG corrigido (10/jul): o guard antigo `< 6 return false` deixava one-liner
+  // IMUNE ao dedup — foi por aí que "squad de 10" e "avatar 5k→500" vazaram
+  // 2x cross-day, enquanto o pauteiro é OBRIGADO a fazer um F1/F2 curto/dia.
+  if (menor < 6) return inter / menor >= 0.6; // texto curto: cobertura do menor
+  // Jaccard clássico OU sobreposição alta: paráfrase ("squad de 10 aqui somos 3"
+  // vs "monta squad de 10, aqui somos 3") divide palavras de enchimento e cai
+  // pra ~0.40 no Jaccard, mas 4+ radicais-núcleo em comum já é o mesmo tema.
+  const jaccard = inter / (sa.size + sb.size - inter);
+  const overlap = inter / menor;
+  return jaccard > 0.42 || (overlap >= 0.55 && inter >= 4);
 }
 
 // amostra de voz é régua de RITMO, não banco de frases: 6+ palavras literais

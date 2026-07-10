@@ -25,7 +25,9 @@ function storeId(): string | null {
   if (cachedStoreId !== undefined) return cachedStoreId;
   const token = process.env.BLOB_READ_WRITE_TOKEN ?? "";
   const match = token.match(/^vercel_blob_rw_([a-zA-Z0-9]+)_/);
-  cachedStoreId = match ? match[1] : null;
+  // o host do CDN é sempre lowercase; o token vem CamelCase — sem isto a URL
+  // determinística bate num cache-key diferente do que o list() usa
+  cachedStoreId = match ? match[1].toLowerCase() : null;
   return cachedStoreId;
 }
 

@@ -10,7 +10,7 @@ interface TermoBanido { termo: string; tipo: "palavra" | "frase" | "regex"; moti
 interface TermoPreferido { termo: string; nota: string; ativo: boolean }
 interface Dicionario { banidas: TermoBanido[]; preferidas: TermoPreferido[] }
 interface PromptItem { key: string; titulo: string; conteudo: string; customizado: boolean }
-interface Fato { id: string; fato: string; fonte: string }
+interface Fato { id: string; fato: string; fonte: string; tema?: string; aprovado?: boolean }
 
 const JSON_HEADERS = { "Content-Type": "application/json" };
 
@@ -310,6 +310,24 @@ export function FatosBlock({ showToast }: { showToast: (msg: string) => void }) 
     }
   }
 
+  // carimbo salva a LISTA COMPLETA do estado local (PUT), não um PATCH
+  // incremental — o CDN do Blob cacheia 60s e um read-modify-write no servidor
+  // dentro dessa janela perderia o carimbo anterior. O front tem o estado todo
+  // em memória, então é a fonte da verdade e não lê stale.
+  async function carimbar(id: string, acao: "aprovar" | "reprovar" | "remover", fato?: string) {
+    const proximo = (fatos ?? []).flatMap((f) =>
+      f.id !== id
+        ? [f]
+        : acao === "remover"
+          ? []
+          : [{ ...f, aprovado: acao === "aprovar", ...(fato ? { fato } : {}) }]
+    );
+    await salvarFatos(
+      proximo,
+      acao === "aprovar" ? "✓ aprovado — entra no tanque no próximo run" : acao === "reprovar" ? "reprovado — fora da fila" : "removido"
+    );
+  }
+
   function anexarTranscript(file: File) {
     if (file.size > 400_000) {
       showToast("arquivo grande demais (máx ~400KB de texto)");
@@ -360,25 +378,53 @@ export function FatosBlock({ showToast }: { showToast: (msg: string) => void }) 
     }
   }
 
+  const pendentes = (fatos ?? []).filter((f) => f.aprovado === false);
+  const ativos = (fatos ?? []).filter((f) => f.aprovado !== false);
+
   return (
     <>
+      {pendentes.length > 0 && (
+        <section className="card" style={{ borderColor: "var(--card-edge-hot)" }}>
+          <div className="section-title">🕵 candidatos a fato · {pendentes.length} esperando teu carimbo</div>
+          <p className="fuel-hint">
+            garimpados do teu material real (tweets, sessões, produtos). eu redigi, você aprova. <strong>confere os números</strong> — os marcados [confirmar] eu tirei de memória, precisa teu ok antes de virar combustível. só entra no tanque o que você aprovar.
+          </p>
+          {pendentes.map((f) => (
+            <div key={f.id} className="fato-item" style={{ borderLeftColor: "var(--amber)" }}>
+              <span className="fato-txt">
+                {f.fato}
+                <span className="fato-fonte">{f.tema ? `${f.tema} · ` : ""}{f.fonte}</span>
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <button className="judge-btn on-good" title="aprovar — vira combustível" disabled={busy} onClick={() => void carimbar(f.id, "aprovar")}>
+                  ✓
+                </button>
+                <button className="chip-x" title="reprovar" disabled={busy} onClick={() => void carimbar(f.id, "remover")}>
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
       <section className="card">
-        <div className="section-title">📌 fatos reais · banco permanente</div>
+        <div className="section-title">📌 fatos reais · banco permanente ({ativos.length})</div>
         <p className="fuel-hint">
           número, decisão, história SUA. post bom nasce daqui. diferente do inbox (que é do dia), fato fica até você remover.
         </p>
-        {(fatos ?? []).map((f, i) => (
+        {ativos.map((f) => (
           <div key={f.id} className="fato-item">
             <span className="fato-txt">
               {f.fato}
-              <span className="fato-fonte">{f.fonte}</span>
+              <span className="fato-fonte">{f.tema ? `${f.tema} · ` : ""}{f.fonte}</span>
             </span>
-            <button className="chip-x" title="remover" disabled={busy} onClick={() => void salvarFatos((fatos ?? []).filter((_, j) => j !== i), "fato removido")}>
+            <button className="chip-x" title="remover" disabled={busy} onClick={() => void carimbar(f.id, "remover")}>
               ✕
             </button>
           </div>
         ))}
-        {fatos && fatos.length === 0 && <p className="empty">nenhum fato dinâmico ainda (os 6 fixos do banco seguem valendo)</p>}
+        {ativos.length === 0 && <p className="empty">nenhum fato aprovado ainda (os 6 fixos do banco seguem valendo)</p>}
         <div className="form-add">
           <div className="form-add-row">
             <input

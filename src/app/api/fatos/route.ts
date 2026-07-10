@@ -8,6 +8,8 @@ interface Fato {
   id: string;
   fato: string;
   fonte: string;
+  tema?: string;
+  aprovado?: boolean; // false = candidato pendente (não entra no gather até o Victor carimbar)
 }
 
 // Banco de fatos dinâmico (facts.json no Blob) — o combustível que o Victor
@@ -29,4 +31,22 @@ export async function PUT(req: NextRequest) {
   }
   await putJSON("facts.json", { facts: body.facts });
   return NextResponse.json({ ok: true, total: body.facts.length });
+}
+
+// carimbo de UM candidato (aprovar/reprovar/remover) — cirúrgico, sem race
+export async function PATCH(req: NextRequest) {
+  if (!isDashboardAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const body = (await req.json().catch(() => null)) as { id?: string; acao?: "aprovar" | "reprovar" | "remover"; fato?: string } | null;
+  if (!body?.id || !body.acao) return NextResponse.json({ error: "id e acao obrigatórios" }, { status: 400 });
+  const blob = (await getJSON<{ facts: Fato[] }>("facts.json")) ?? { facts: [] };
+  if (body.acao === "remover") {
+    blob.facts = blob.facts.filter((f) => f.id !== body.id);
+  } else {
+    const f = blob.facts.find((x) => x.id === body.id);
+    if (!f) return NextResponse.json({ error: "candidato não encontrado" }, { status: 404 });
+    if (typeof body.fato === "string" && body.fato.trim()) f.fato = body.fato.trim(); // edição opcional na hora de aprovar
+    f.aprovado = body.acao === "aprovar";
+  }
+  await putJSON("facts.json", blob);
+  return NextResponse.json({ ok: true });
 }
