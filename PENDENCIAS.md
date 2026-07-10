@@ -38,6 +38,19 @@ Reduzir o consumo de Advanced Operations pra não estourar de novo, seja qual fo
 
 ---
 
+## ✅ RESOLVIDO — watchdog virou rede de segurança de verdade (10/jul, commit `116ea95`)
+
+**O gatilho:** o run que travou hoje (timeout de 80s no editor) revelou que a única forma de recuperação era eu intervir manualmente. Victor perguntou direto: "tem risco de acontecer timeout e eu ficar sem post?" — resposta: tinha, sim.
+
+**3 falhas encontradas e corrigidas:**
+1. Editor sem `timeoutMs` próprio (caía no default de 80s, curto) → agora 110s.
+2. Watchdog só rodava 1x/dia às 13h (limite do Hobby) → agora a cada 20min, das 8h às 20h BRT (o upgrade pro Pro desbloqueou isso).
+3. Achado testando ao vivo: existe um 3º tipo de falha — run trava SEM registrar erro (função morre antes de salvar). Ficava invisível pro watchdog. Agora ele também detecta "parado há +18min sem progresso", não só erro explícito.
+
+**Testado sob fogo, não só no papel:** disparei o watchdog manualmente, ele achou e tentou reviver um run travado de verdade; a trava de segurança (`mode=review`) impediu publicação indevida antes de eu confirmar e arquivar o run de teste. Ciclo completo validado.
+
+---
+
 ## Outras pendências conhecidas (sem urgência, registradas pra retomar)
 
 - **Google Drive (dailies → inbox automático):** código pronto (`src/lib/drive.ts`, rota `/api/drive/sync`, guia `SETUP-DRIVE.md`), mas **você ainda não criou a chave de service account no Google Cloud** — sem isso fica `enabled: false`, no-op silencioso, não quebra nada. ~10 min quando quiser.
