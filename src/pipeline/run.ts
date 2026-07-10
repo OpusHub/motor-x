@@ -655,6 +655,7 @@ async function stageEditor(run: RunState, config: AppConfig): Promise<void> {
     effort: "low",
     maxTokens: 8000,
     agent: "editor",
+    timeoutMs: 110_000, // sem isto caía no default de 80s (curto pra hora congestionada) — foi o timeout de 10/jul
   });
 
   // dedup determinístico ("memória mínima" que o LLM não garante): 2 posts do

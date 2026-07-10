@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/watchdog",
-      "schedule": "7 13 * * *"
+      "schedule": "*/20 11-23 * * *"
     }
   ]
 }
