@@ -1,6 +1,10 @@
 # Pendências do Motor X — atualizado 2026-07-10
 
-## 🔴 BLOQUEADOR ATIVO — sistema fora do ar (decisão do Victor)
+## ✅ RESOLVIDO — Victor fez upgrade pro Vercel Pro (10/jul)
+
+Os 4 blob stores voltaram a "Active", confirmado com o mesmo trigger que dava 500 (agora 202 normal) e um run de teste ponta a ponta. Além disso apliquei blindagem técnica pra não estourar de novo: `getJSON` deixou de usar `list()` (Advanced Operation) em toda leitura — agora lê por URL determinística do Blob (fetch HTTP comum, sem custo de cota); o histórico de 7 dias no gather virou 1 `list()` só em vez de 7. Commit `b57b81c`.
+
+## (histórico) O bloqueador de hoje cedo, mantido pra registro
 
 **O que aconteceu:** o Vercel Blob (onde vive TODO o estado do motor: runs, posts, config, dicionário, prompts, lições) estourou a cota grátis de **"Advanced Operations"** do plano Hobby: **2.051 / 2.000** no ciclo atual. A Vercel suspendeu o store inteiro — toda leitura/escrita falha com `Vercel Blob: This store has been suspended`. Reset automático só em **09/08/2026** (quase 2 meses).
 
