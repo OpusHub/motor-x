@@ -51,6 +51,14 @@ Reduzir o consumo de Advanced Operations pra não estourar de novo, seja qual fo
 
 ---
 
+## 🔑 Esperando você — ligar o ScrapeCreators (destrava o conteúdo "foda")
+
+A integração está PRONTA no código (`src/lib/sources/scrapecreators.ts`), liga sozinha quando você criar a chave. O que ela resolve:
+- **Número sempre fresco** (mata o viés de envelhecimento): puxa a métrica atual dos teus avatares na hora, em vez de cravar "409k" que vira mentira quando você está em 30M+.
+- **Comentar o nicho** (antídoto de repetição): puxa os posts recentes de @condzxyz, @levelsio, @gregisenberg etc → o motor comenta o que a galera que você admira está falando HOJE. Âncora externa muda todo dia.
+
+**Passos (~5 min):** (1) criar conta em scrapecreators.com (100 créditos grátis pra testar, depois $10 = 5k); (2) copiar a API key; (3) me passar, ou adicionar na Vercel como `SCRAPECREATORS_API_KEY`. Opcional: `SCRAPECREATORS_ACCOUNTS` (csv de handles) pra customizar as contas-referência. Sem a chave, o motor segue no grátis (Reddit/HN/PH), sem quebrar.
+
 ## Outras pendências conhecidas (sem urgência, registradas pra retomar)
 
 - **Google Drive (dailies → inbox automático):** código pronto (`src/lib/drive.ts`, rota `/api/drive/sync`, guia `SETUP-DRIVE.md`), mas **você ainda não criou a chave de service account no Google Cloud** — sem isso fica `enabled: false`, no-op silencioso, não quebra nada. ~10 min quando quiser.
